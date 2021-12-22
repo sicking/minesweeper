@@ -1,0 +1,283 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<body>
+<style>
+td {
+  width: 20px;
+  height: 20px;
+  border: 1px solid black;
+}
+</style>
+<div id=boardc></div>
+<pre id=log></pre>
+<script>
+let board = document.createElement('table');
+document.getElementById('boardc').appendChild(board);
+
+let cells = [];
+let nRows = 10, nCols = 10;
+let mines = new Set();
+let startIx = undefined;
+let counts = [];
+let solved = [];
+
+makeBoard();
+loadMines();
+
+updateBoard();
+
+function updateBoard() {
+  calculateCounts();
+  let err;
+  try {
+    doSolve();
+  } catch (ex) {
+    err = ex;
+  }
+  redrawBoard();
+  if (err) {
+    log(err.message);
+    throw err;
+  }
+}
+
+function makeBoard() {
+  for (let row = 0; row < nRows; row++) {
+    let r = document.createElement('tr')
+    board.appendChild(r)
+    for (let col = 0; col < nCols; col++) {
+      let c = document.createElement('td')
+      r.appendChild(c)
+      cells.push(c)
+
+      let ix = row * nCols + col;
+      c.onclick = (e) => {
+        if (mines.has(ix)) {
+          mines.delete(ix);
+        } else {
+          mines.add(ix);
+        }
+        saveMines();
+        updateBoard();
+      }
+      c.oncontextmenu = (e) => {
+        startIx = ix;
+        saveMines();
+        updateBoard();
+        return false;
+      }
+    }
+  }
+}
+
+function saveMines() {
+  localStorage.mines = JSON.stringify(Array.from(mines))
+  localStorage.size = JSON.stringify([nRows, nCols])
+  localStorage.start = startIx
+}
+function loadMines() {
+  if (localStorage.mines && localStorage.size) {
+    mines = new Set(JSON.parse(localStorage.mines));
+    [nRows, nCols] = JSON.parse(localStorage.size);
+    startIx = localStorage.start ? parseInt(localStorage.start) : undefined;
+  } else {
+    mines = new Set();
+    [nRows, nCols] = [10,10];
+    startIx = undefined;
+  }
+}
+
+function getNeighbors(ix) {
+  if (typeof ix !== 'number') {
+    throw new Error("expected number");
+  }
+  let col = ix % nCols;
+  let row = (ix - col) / nCols;
+  let res = [];
+  [
+    [-1,-1],
+    [-1,0],
+    [-1,1],
+    [0,1],
+    [1,1],
+    [1,0],
+    [1,-1],
+    [0,-1],
+  ].forEach(delta => {
+    let newRow = row + delta[0];
+    let newCol = col + delta[1];
+    if (newRow !== -1 && newCol !== -1 && newRow !== nRows && newCol !== nCols) {
+      res.push(newRow * nCols + newCol)
+    }
+  })
+  return res;
+}
+
+function calculateCounts() {
+  counts = [];
+  for (ix = 0; ix < nRows * nCols; ix++) {
+    let c;
+    if (mines.has(ix)) {
+      c = 'x'
+    } else {
+      c = 0
+      for (let neighbor of getNeighbors(ix)) {
+        if (mines.has(neighbor)) {
+          c++;
+        }
+      }
+    }
+    counts.push(c);
+  }
+}
+
+function redrawBoard() {
+  for (let [i, cell] of cells.entries()) {
+    if (counts[i] !== 0) {
+      cell.textContent = counts[i]
+    } else {
+      cell.textContent = ''
+    }
+    if (i === startIx) {
+      cell.textContent += 'o'
+    }
+    if (solved[i]) {
+      if (solved[i] === 'x')  {
+        cell.style.backgroundColor = 'red';
+      } else {
+        cell.style.backgroundColor = 'green';
+      }
+    } else {
+      cell.style.backgroundColor = '';
+    }
+  }
+}
+
+function popSet(set) {
+  let v = set[Symbol.iterator]().next().value;
+  set.delete(v);
+  return v;
+}
+
+function doSolve() {
+  solved = cells.map(() => undefined);
+
+  let queueEmpty = [];
+  let queuePartials = new Set();
+
+  function click(ix) {
+    if (solved[ix]) {
+      solved[ix] = 'x'
+      throw new Error("already clicked")
+    }
+    if (counts[ix] === 'x') {
+      solved[ix] = 'x';
+      throw new Error("clicked mine")
+    }
+    if (counts[ix] === 0) {
+      solved[ix] = 'f';
+      queueEmpty.push(ix);
+      return;
+    }
+
+    solved[ix] = 'p';
+    queuePartials.add(ix);
+    for (let n of getNeighbors(ix)) {
+      if (solved[n] === 'p') {
+        queuePartials.add(n);
+      }
+    }
+  }
+
+  function flag(ix) {
+    if (solved[ix]) {
+      solved[ix] = 'x'
+      throw new Error("already clicked")
+    }
+    if (counts[ix] !== 'x') {
+      solved[ix] = 'x'
+      throw new Error("flagged non-mine")
+    }
+
+    solved[ix] = 'm'
+
+    for (let n of getNeighbors(ix)) {
+      if (solved[n] === 'p') {
+        queuePartials.add(n);
+      }
+    }
+  }
+
+  click(startIx);
+
+  while (1) {
+    if (queueEmpty.length) {
+      for (let n of getNeighbors(queueEmpty.pop())) {
+        if (solved[n]) {
+          if (counts[n] !== 0) {
+            queuePartials.add(n);
+          }
+          continue;
+        }
+        click(n);
+      }
+    } else if (queuePartials.size) {
+      let ix = popSet(queuePartials);
+
+      if (solved[ix] !== 'p') {
+        let prev = solved[ix];
+        solved[ix] = 'x'
+        throw new Error('expected partial but got ' + prev)
+      }
+
+      let mines = 0;
+      let unknowns = 0;
+      let clicked = 0;
+
+      for (let n of getNeighbors(ix)) {
+        if (solved[n] === 'm') {
+          mines++;
+        } else if (solved[n]) {
+          clicked++;
+        } else {
+          unknowns++;
+        }
+      }
+
+      if (unknowns === 0) {
+        solved[ix] = 'f'
+        if (mines !== counts[ix]) {
+          solved[ix] = 'x'
+          throw new Error('count and mines mismatched')
+        }
+        continue;
+      }
+      if (mines === counts[ix]) {
+        for (let n of getNeighbors(ix)) {
+          if (!solved[n]) {
+            click(n);
+          }
+        }
+        continue;
+      }
+      if (unknowns + mines === counts[ix]) {
+        for (let n of getNeighbors(ix)) {
+          if (!solved[n]) {
+            flag(n);
+          }
+        }
+        continue;
+      }
+    } else {
+      return;
+    }
+  }
+}
+
+function log(str) {
+  document.getElementById('log').textContent += str + '\n';
+}
+
+</script>
