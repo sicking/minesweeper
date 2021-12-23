@@ -160,12 +160,46 @@ function popSet(set) {
   set.delete(v);
   return v;
 }
+function removeValue(array, value) {
+  let i = array.indexOf(value);
+  if (i === -1) {
+    throw new Error("value not found");
+  }
+  array.splice(i, 1);
+}
 
 function doSolve() {
   solved = cells.map(() => undefined);
 
   let queueEmpty = [];
-  let queuePartials = new Set();
+  let rulesPass1 = new Set();
+  let rulesPass2 = new Set();
+  let rulesByCell = solved.map(() => new Set());
+
+  click(startIx);
+
+  while (1) {
+    if (queueEmpty.length) {
+      for (let n of getNeighbors(queueEmpty.pop())) {
+        if (solved[n]) {
+          continue;
+        }
+        click(n);
+      }
+    } else if (rulesPass1.size) {
+      let rule = popSet(rulesPass1);
+
+      if (rule.max === 0) {
+        rule.cells.forEach(n => click(n));
+      } else if (rule.min === rule.cells.length) {
+        rule.cells.forEach(n => flag(n));
+      } else {
+        rulesPass2.add(rule);
+      }
+    } else {
+      return;
+    }
+  }
 
   function click(ix) {
     if (solved[ix]) {
@@ -176,19 +210,35 @@ function doSolve() {
       solved[ix] = 'x';
       throw new Error("clicked mine")
     }
+
+    solved[ix] = 'f';
+
+    for (rule of rulesByCell[ix]) {
+      removeValue(rule.cells, ix);
+      rulesPass1.add(rule);
+      rulesPass2.delete(rule);
+    }
+
     if (counts[ix] === 0) {
-      solved[ix] = 'f';
       queueEmpty.push(ix);
       return;
     }
 
-    solved[ix] = 'p';
-    queuePartials.add(ix);
+    let cells = [];
+    let remaining = counts[ix];
     for (let n of getNeighbors(ix)) {
-      if (solved[n] === 'p') {
-        queuePartials.add(n);
+      if (solved[n] === 'm') {
+        remaining--;
+      } else if (!solved[n]) {
+        cells.push(n);
       }
     }
+
+    addRule({
+      cells,
+      min: remaining,
+      max: remaining,
+    });
   }
 
   function flag(ix) {
@@ -203,75 +253,23 @@ function doSolve() {
 
     solved[ix] = 'm'
 
-    for (let n of getNeighbors(ix)) {
-      if (solved[n] === 'p') {
-        queuePartials.add(n);
+    for (rule of rulesByCell[ix]) {
+      removeValue(rule.cells, ix);
+      if (rule.min === 0) {
+        solved[ix] = 'x'
+        throw new Error("rule has negative counts")
       }
+      rule.min--;
+      rule.max--;
+      rulesPass1.add(rule);
+      rulesPass2.delete(rule);
     }
   }
 
-  click(startIx);
-
-  while (1) {
-    if (queueEmpty.length) {
-      for (let n of getNeighbors(queueEmpty.pop())) {
-        if (solved[n]) {
-          if (counts[n] !== 0) {
-            queuePartials.add(n);
-          }
-          continue;
-        }
-        click(n);
-      }
-    } else if (queuePartials.size) {
-      let ix = popSet(queuePartials);
-
-      if (solved[ix] !== 'p') {
-        let prev = solved[ix];
-        solved[ix] = 'x'
-        throw new Error('expected partial but got ' + prev)
-      }
-
-      let mines = 0;
-      let unknowns = 0;
-      let clicked = 0;
-
-      for (let n of getNeighbors(ix)) {
-        if (solved[n] === 'm') {
-          mines++;
-        } else if (solved[n]) {
-          clicked++;
-        } else {
-          unknowns++;
-        }
-      }
-
-      if (unknowns === 0) {
-        solved[ix] = 'f'
-        if (mines !== counts[ix]) {
-          solved[ix] = 'x'
-          throw new Error('count and mines mismatched')
-        }
-        continue;
-      }
-      if (mines === counts[ix]) {
-        for (let n of getNeighbors(ix)) {
-          if (!solved[n]) {
-            click(n);
-          }
-        }
-        continue;
-      }
-      if (unknowns + mines === counts[ix]) {
-        for (let n of getNeighbors(ix)) {
-          if (!solved[n]) {
-            flag(n);
-          }
-        }
-        continue;
-      }
-    } else {
-      return;
+  function addRule(rule) {
+    rulesPass1.add(rule);
+    for (cell of rule.cells) {
+      rulesByCell[cell].add(rule);
     }
   }
 }
