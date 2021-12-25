@@ -10,9 +10,11 @@ td {
   border: 1px solid black;
 }
 </style>
+<input type=checkbox id=playview onclick="redrawBoard()"> Player view
 <div id=boardc></div>
 <pre id=log></pre>
 <script>
+"use strict";
 let board = document.createElement('table');
 document.getElementById('boardc').appendChild(board);
 
@@ -90,9 +92,7 @@ function loadMines() {
 }
 
 function getNeighbors(ix) {
-  if (typeof ix !== 'number') {
-    throw new Error("expected number");
-  }
+  assert(typeof ix === 'number');
   let col = ix % nCols;
   let row = (ix - col) / nCols;
   let res = [];
@@ -117,7 +117,7 @@ function getNeighbors(ix) {
 
 function calculateCounts() {
   counts = [];
-  for (ix = 0; ix < nRows * nCols; ix++) {
+  for (let ix = 0; ix < nRows * nCols; ix++) {
     let c;
     if (mines.has(ix)) {
       c = 'x'
@@ -134,8 +134,9 @@ function calculateCounts() {
 }
 
 function redrawBoard() {
+  let playview = document.getElementById('playview').checked
   for (let [i, cell] of cells.entries()) {
-    if (counts[i] !== 0) {
+    if (counts[i] !== 0 && (!playview || solved[i])) {
       cell.textContent = counts[i]
     } else {
       cell.textContent = ''
@@ -143,12 +144,8 @@ function redrawBoard() {
     if (i === startIx) {
       cell.textContent += 'o'
     }
-    if (solved[i]) {
-      if (solved[i] === 'x')  {
-        cell.style.backgroundColor = 'red';
-      } else {
-        cell.style.backgroundColor = 'green';
-      }
+    if (solved[i] && !playview) {
+      cell.style.backgroundColor = 'green';
     } else {
       cell.style.backgroundColor = '';
     }
@@ -157,14 +154,13 @@ function redrawBoard() {
 
 function popSet(set) {
   let v = set[Symbol.iterator]().next().value;
+  assert(v != undefined);
   set.delete(v);
   return v;
 }
 function removeValue(array, value) {
   let i = array.indexOf(value);
-  if (i === -1) {
-    throw new Error("value not found");
-  }
+  assert(i !== -1);
   array.splice(i, 1);
 }
 
@@ -176,7 +172,9 @@ function doSolve() {
   let rulesPass2 = new Set();
   let rulesByCell = solved.map(() => new Set());
 
-  click(startIx);
+  if (counts[startIx] !== 'x') {
+    click(startIx);
+  }
 
   while (1) {
     if (queueEmpty.length) {
@@ -189,12 +187,71 @@ function doSolve() {
     } else if (rulesPass1.size) {
       let rule = popSet(rulesPass1);
 
+      // We could do something faster than the slice here if we removed he exception from
+      // removeValue
       if (rule.max === 0) {
-        rule.cells.forEach(n => click(n));
+        rule.cells.slice().forEach(n => click(n));
       } else if (rule.min === rule.cells.length) {
-        rule.cells.forEach(n => flag(n));
+        rule.cells.slice().forEach(n => flag(n));
       } else {
         rulesPass2.add(rule);
+      }
+    } else if (rulesPass2.size) {
+      let rule = popSet(rulesPass2);
+
+      let otherRules = new Map();
+      for (let cell of rule.cells) {
+        for (let other of rulesByCell[cell]) {
+          let count = otherRules.get(other) ?? 0;
+          otherRules.set(other, count + 1);
+        }
+      }
+
+      for (let [other, overlapCount] of otherRules) {
+
+        if (rule.cells.length === overlapCount &&
+            other.cells.length === overlapCount) {
+          continue;
+        }
+
+        assert(rule.min <= (other.max + rule.cells.length - overlapCount));
+        assert(other.min <= (rule.max + other.cells.length - overlapCount));
+
+        function processOverlapping(rule1, rule2, overlapCount) {
+          if (rule1.min === (rule2.max + rule1.cells.length - overlapCount)) {
+            let rule1Cells = rule1.cells.slice();
+            let rule2Cells = rule2.cells.slice();
+            rule1Cells.forEach(n => {
+              if (!rule2Cells.includes(n)) {
+                flag(n);
+              }
+            })
+            rule2Cells.forEach(n => {
+              if (!rule1Cells.includes(n)) {
+                click(n);
+              }
+            })
+            assert(rule1.min === rule2.max);
+            if (rule1.max !== rule1.min) {
+              rule1.max = rule1.min;
+              rulesPass1.add(rule1);
+              rulesPass2.delete(rule1);
+            }
+            if (rule2.min !== rule2.max) {
+              rule2.min = rule2.max;
+              rulesPass1.add(rule2);
+              rulesPass2.delete(rule2);
+            }
+            return true;
+          }
+
+          return false;
+        }
+
+        if (processOverlapping(rule, other, overlapCount) ||
+            processOverlapping(other, rule, overlapCount)) {
+          break;
+        }
       }
     } else {
       return;
@@ -202,18 +259,12 @@ function doSolve() {
   }
 
   function click(ix) {
-    if (solved[ix]) {
-      solved[ix] = 'x'
-      throw new Error("already clicked")
-    }
-    if (counts[ix] === 'x') {
-      solved[ix] = 'x';
-      throw new Error("clicked mine")
-    }
+    assert(!solved[ix]);
+    assert(counts[ix] !== 'x');
 
     solved[ix] = 'f';
 
-    for (rule of rulesByCell[ix]) {
+    for (let rule of rulesByCell[ix]) {
       removeValue(rule.cells, ix);
       rulesPass1.add(rule);
       rulesPass2.delete(rule);
@@ -242,23 +293,14 @@ function doSolve() {
   }
 
   function flag(ix) {
-    if (solved[ix]) {
-      solved[ix] = 'x'
-      throw new Error("already clicked")
-    }
-    if (counts[ix] !== 'x') {
-      solved[ix] = 'x'
-      throw new Error("flagged non-mine")
-    }
+    assert(!solved[ix]);
+    assert(counts[ix] === 'x');
 
     solved[ix] = 'm'
 
-    for (rule of rulesByCell[ix]) {
+    for (let rule of rulesByCell[ix]) {
       removeValue(rule.cells, ix);
-      if (rule.min === 0) {
-        solved[ix] = 'x'
-        throw new Error("rule has negative counts")
-      }
+      assert(rule.min !== 0);
       rule.min--;
       rule.max--;
       rulesPass1.add(rule);
@@ -268,7 +310,7 @@ function doSolve() {
 
   function addRule(rule) {
     rulesPass1.add(rule);
-    for (cell of rule.cells) {
+    for (let cell of rule.cells) {
       rulesByCell[cell].add(rule);
     }
   }
@@ -276,6 +318,12 @@ function doSolve() {
 
 function log(str) {
   document.getElementById('log').textContent += str + '\n';
+}
+
+function assert(condition) {
+  if (!condition) {
+    throw new Error('failed assert')
+  }
 }
 
 </script>
