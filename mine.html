@@ -94,11 +94,11 @@ const nCols = 10;
 const exampleBoards = 10;
 const nBoards = 1000;
 
-compareSolvers(doSolve, doSolve2, 20);
+compareSolvers(doSolve2, doSolve3, 20);
 
 function compareSolvers(solver1, solver2, nMines) {
-  let solved1 = testSolver(solver1, nMines)
-  let solved2 = testSolver(solver2, nMines)
+  let solved1 = testSolver(solver1, nMines);
+  let solved2 = testSolver(solver2, nMines);
 
   log(`${solver1.name || 'first'} solved ${getSolvedBoards(solved1.solved)} boards and ${getSolvedSquares(solved1.solved)} squares in ${solved1.time}ms`)
   log(`${solver2.name || 'second'} solved ${getSolvedBoards(solved2.solved)} boards and ${getSolvedSquares(solved2.solved)} squares in ${solved2.time}ms`)
@@ -111,8 +111,8 @@ function compareSolvers(solver1, solver2, nMines) {
       let container = document.createElement('div');
       container.className = 'boardsContainer'
       boardc.appendChild(container)
-      drawBoard(board, doSolve, container);
-      drawBoard(board, doSolve2, container);
+      drawBoard(board, solver1, container);
+      drawBoard(board, solver2, container);
       boardc.appendChild(document.createElement('hr'));
       if (++nDrawn === exampleBoards) {
         break;
@@ -295,7 +295,7 @@ function assert(condition) {
 
 /***********************************************/
 
-function doSolve(board, counts, startIx) {
+function doSolve2(board, counts, startIx) {
   let solved = [];
   for (let i = 0; i < nRows * nCols; i++) {
     solved.push(undefined);
@@ -315,7 +315,22 @@ function doSolve(board, counts, startIx) {
 
   let done = false;
   while (!done) {
-    if (queueEmpty.length) {
+    if (!clicksRemaining) {
+      for (let [ix, value] of solved.entries()) {
+        if (!value) {
+          flag(ix);
+        }
+      }
+      done = true;
+    }
+    else if (!flagsRemaining) {
+      for (let [ix, value] of solved.entries()) {
+        if (!value) {
+          click(ix);
+        }
+      }
+      done = true;
+    } else if (queueEmpty.length) {
       for (let n of getNeighbors(board, queueEmpty.pop())) {
         if (solved[n]) {
           continue;
@@ -460,7 +475,7 @@ function doSolve(board, counts, startIx) {
 
 /***********************************************/
 
-function doSolve2(board, counts, startIx) {
+function doSolve3(board, counts, startIx) {
   let solved = [];
   for (let i = 0; i < nRows * nCols; i++) {
     solved.push(undefined);
@@ -527,8 +542,9 @@ function doSolve2(board, counts, startIx) {
 
       for (let [other, overlapCount] of otherRules) {
 
-        if (rule.cells.length === overlapCount &&
-            other.cells.length === overlapCount) {
+        if ((rule.cells.length === overlapCount &&
+             other.cells.length === overlapCount) ||
+            overlapCount === 1) {
           continue;
         }
 
@@ -539,16 +555,16 @@ function doSolve2(board, counts, startIx) {
           if (rule1.min === (rule2.max + rule1.cells.length - overlapCount)) {
             let rule1Cells = rule1.cells.slice();
             let rule2Cells = rule2.cells.slice();
-            rule1Cells.forEach(n => {
+            for (let n of rule1Cells) {
               if (!rule2Cells.includes(n)) {
                 flag(n);
               }
-            })
-            rule2Cells.forEach(n => {
+            }
+            for (let n of rule2Cells) {
               if (!rule1Cells.includes(n)) {
                 click(n);
               }
-            })
+            }
             assert(rule1.min === rule2.max);
             if (rule1.max !== rule1.min) {
               rule1.max = rule1.min;
@@ -560,6 +576,17 @@ function doSolve2(board, counts, startIx) {
               rulesPass1.add(rule2);
               rulesPass2.delete(rule2);
             }
+            return true;
+          }
+          if (rule2.cells.length === overlapCount && rule2.min === rule2.max) {
+            rule1.min -= rule2.min;
+            rule1.max -= rule2.min;
+            rule1.cells = rule1.cells.filter(n => !rule2.cells.includes(n));
+            for (let n of rule2.cells) {
+              rulesByCell[n].delete(rule1)
+            }
+            rulesPass1.add(rule1);
+            rulesPass2.delete(rule1);
             return true;
           }
 
