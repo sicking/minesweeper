@@ -4,51 +4,173 @@
 <meta charset="utf-8"/>
 <body>
 <style>
+table {
+  border-spacing: 0px
+}
+.boardsContainer {
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+}
 td {
-  width: 20px;
-  height: 20px;
-  border: 1px solid black;
+  width: 24px;
+  height: 24px;
+  border: 0px;
+  padding: 0px;
+  margin: 0px;
+  background-size: 24px;
+}
+.solvedMine {
+  background-image: url('flag.svg');
+}
+.unsolvedMine {
+  background-image: url('unsolved.svg');
+}
+.unsolvedMine:hover {
+  background-image: url('mine.svg');
+}
+.unsolved {
+  background-image: url('unsolved.svg');
+}
+.solved0 {
+  background-image: url('nr0.svg');
+}
+.solved1 {
+  background-image: url('nr1.svg');
+}
+.solved2 {
+  background-image: url('nr2.svg');
+}
+.solved3 {
+  background-image: url('nr3.svg');
+}
+.solved4 {
+  background-image: url('nr4.svg');
+}
+.solved5 {
+  background-image: url('nr5.svg');
+}
+.solved6 {
+  background-image: url('nr6.svg');
+}
+.solved7 {
+  background-image: url('nr7.svg');
+}
+.solved8 {
+  background-image: url('nr8.svg');
 }
 </style>
-<input type=checkbox id=playview onclick="redrawBoard()"> Player view
-<div id=boardc></div>
 <pre id=log></pre>
+<div id=boardc></div>
 <script>
 "use strict";
-let board = document.createElement('table');
-document.getElementById('boardc').appendChild(board);
 
-let cells = [];
-let nRows = 10, nCols = 10;
-let mines = new Set();
-let startIx = undefined;
-let counts = [];
-let solved = [];
-
-makeBoard();
-loadMines();
-
-updateBoard();
-
-function updateBoard() {
-  calculateCounts();
-  let err;
-  try {
-    doSolve();
-  } catch (ex) {
-    err = ex;
+function generateBoard(nMines, seed) {
+  function rnd(max) {
+    seed = seed * 0x915f77f5 + 1
+    return seed % max
   }
-  redrawBoard();
-  if (err) {
-    log(err.message);
-    throw err;
+  rnd(10);
+  rnd(10);
+
+  const nums = [];
+  const mines = new Set();
+  for (let i = 0; i < nRows * nCols; i++) {
+    nums.push(i);
+  }
+  for (let i = 0; i < nMines; i++) {
+    let r = rnd(nums.length);
+    mines.add(nums[r]);
+    nums.splice(r, 1);
+  }
+
+  return {
+    mines,
   }
 }
 
-function makeBoard() {
+const nRows = 10;
+const nCols = 10;
+const exampleBoards = 10;
+const nBoards = 1000;
+
+compareSolvers(doSolve, doSolve2, 20);
+
+function compareSolvers(solver1, solver2, nMines) {
+  let solved1 = testSolver(solver1, nMines)
+  let solved2 = testSolver(solver2, nMines)
+
+  log(`${solver1.name || 'first'} solved ${getSolvedBoards(solved1.solved)} boards and ${getSolvedSquares(solved1.solved)} squares in ${solved1.time}ms`)
+  log(`${solver2.name || 'second'} solved ${getSolvedBoards(solved2.solved)} boards and ${getSolvedSquares(solved2.solved)} squares in ${solved2.time}ms`)
+
+  let boardc = document.getElementById('boardc');
+  let nDrawn = 0;
+  for (let [i, count1] of solved1.solved.entries()) {
+    if (count1 != solved2.solved[i]) {
+      let board = generateBoard(nMines, i);
+      let container = document.createElement('div');
+      container.className = 'boardsContainer'
+      boardc.appendChild(container)
+      drawBoard(board, doSolve, container);
+      drawBoard(board, doSolve2, container);
+      boardc.appendChild(document.createElement('hr'));
+      if (++nDrawn === exampleBoards) {
+        break;
+      }
+    }
+  }
+}
+
+function testSolver(solver, nMines) {
+  let results = []
+  let startTime = performance.now();
+  for (let i = 0; i < nBoards; i++) {
+    let board = generateBoard(nMines, i);
+    let counts = calculateCounts(board);
+    let startIx = counts.indexOf(0);
+    assert(startIx !== -1);
+    let solved = solver(board, counts, startIx);
+    let nSolved = 0;
+    for (let solve of solved) {
+      if (solve) {
+        nSolved++;
+      }
+    }
+    results.push(nSolved);
+  }
+  let endTime = performance.now();
+  return { time: endTime - startTime, solved: results }
+}
+
+function getSolvedBoards(solved) {
+  let res = 0;
+  for (let count of solved) {
+    if (count === nRows * nCols) {
+      res++;
+    }
+  }
+  return res;
+}
+
+function getSolvedSquares(solved) {
+  let res = 0;
+  for (let count of solved) {
+    res += count;
+  }
+  return res;
+}
+
+function drawBoard(board, solver, parent) {
+  board = {
+    ...board,
+    mines: new Set(board.mines)
+  }
+  let table = document.createElement('table');
+  parent.appendChild(table);
+  let cells = [];
   for (let row = 0; row < nRows; row++) {
     let r = document.createElement('tr')
-    board.appendChild(r)
+    table.appendChild(r)
     for (let col = 0; col < nCols; col++) {
       let c = document.createElement('td')
       r.appendChild(c)
@@ -56,43 +178,58 @@ function makeBoard() {
 
       let ix = row * nCols + col;
       c.onclick = (e) => {
-        if (mines.has(ix)) {
-          mines.delete(ix);
+        if (board.mines.has(ix)) {
+          board.mines.delete(ix);
         } else {
-          mines.add(ix);
+          board.mines.add(ix);
         }
-        saveMines();
         updateBoard();
-      }
-      c.oncontextmenu = (e) => {
-        startIx = ix;
-        saveMines();
-        updateBoard();
-        return false;
       }
     }
   }
-}
+  updateBoard();
 
-function saveMines() {
-  localStorage.mines = JSON.stringify(Array.from(mines))
-  localStorage.size = JSON.stringify([nRows, nCols])
-  localStorage.start = startIx
-}
-function loadMines() {
-  if (localStorage.mines && localStorage.size) {
-    mines = new Set(JSON.parse(localStorage.mines));
-    [nRows, nCols] = JSON.parse(localStorage.size);
-    startIx = localStorage.start ? parseInt(localStorage.start) : undefined;
-  } else {
-    mines = new Set();
-    [nRows, nCols] = [10,10];
-    startIx = undefined;
+  function updateBoard() {
+    let counts = calculateCounts(board);
+    let startIx = counts.indexOf(0);
+    assert(startIx !== -1);
+
+    let err;
+    let solved;
+    try {
+      solved = solver(board, counts, startIx);
+    } catch (ex) {
+      err = ex;
+      solved = [];
+    }
+
+    for (let [i, cell] of cells.entries()) {
+      if (counts[i] === 'x' && solved[i]) {
+        cell.className = 'solvedMine'
+      } else if (counts[i] === 'x') {
+        cell.className = 'unsolvedMine'
+      } else if (solved[i]) {
+        cell.className = 'solved' + counts[i]
+      } else {
+        cell.className = 'unsolved'
+      }
+
+      // if (i === startIx) {
+      //   cell.className += ' startCell';
+      // }
+    }
+
+    if (err) {
+      log(err.message);
+      throw err;
+    }
   }
+
 }
 
-function getNeighbors(ix) {
+function getNeighbors(board, ix) {
   assert(typeof ix === 'number');
+
   let col = ix % nCols;
   let row = (ix - col) / nCols;
   let res = [];
@@ -115,41 +252,23 @@ function getNeighbors(ix) {
   return res;
 }
 
-function calculateCounts() {
-  counts = [];
+function calculateCounts(board) {
+  let counts = [];
   for (let ix = 0; ix < nRows * nCols; ix++) {
     let c;
-    if (mines.has(ix)) {
+    if (board.mines.has(ix)) {
       c = 'x'
     } else {
       c = 0
-      for (let neighbor of getNeighbors(ix)) {
-        if (mines.has(neighbor)) {
+      for (let neighbor of getNeighbors(board, ix)) {
+        if (board.mines.has(neighbor)) {
           c++;
         }
       }
     }
     counts.push(c);
   }
-}
-
-function redrawBoard() {
-  let playview = document.getElementById('playview').checked
-  for (let [i, cell] of cells.entries()) {
-    if (counts[i] !== 0 && (!playview || solved[i])) {
-      cell.textContent = counts[i]
-    } else {
-      cell.textContent = ''
-    }
-    if (i === startIx) {
-      cell.textContent += 'o'
-    }
-    if (solved[i] && !playview) {
-      cell.style.backgroundColor = 'green';
-    } else {
-      cell.style.backgroundColor = '';
-    }
-  }
+  return counts;
 }
 
 function popSet(set) {
@@ -164,8 +283,26 @@ function removeValue(array, value) {
   array.splice(i, 1);
 }
 
-function doSolve() {
-  solved = cells.map(() => undefined);
+function log(str) {
+  document.getElementById('log').textContent += str + '\n';
+}
+
+function assert(condition) {
+  if (!condition) {
+    throw new Error('failed assert')
+  }
+}
+
+/***********************************************/
+
+function doSolve(board, counts, startIx) {
+  let solved = [];
+  for (let i = 0; i < nRows * nCols; i++) {
+    solved.push(undefined);
+  }
+  let clicksRemaining = solved.length - board.mines.size;
+  let flagsRemaining = board.mines.size;
+  let flaggedSquares = 0;
 
   let queueEmpty = [];
   let rulesPass1 = new Set();
@@ -176,9 +313,10 @@ function doSolve() {
     click(startIx);
   }
 
-  while (1) {
+  let done = false;
+  while (!done) {
     if (queueEmpty.length) {
-      for (let n of getNeighbors(queueEmpty.pop())) {
+      for (let n of getNeighbors(board, queueEmpty.pop())) {
         if (solved[n]) {
           continue;
         }
@@ -254,14 +392,17 @@ function doSolve() {
         }
       }
     } else {
-      return;
+      done = true;
     }
   }
+
+  return solved;
 
   function click(ix) {
     assert(!solved[ix]);
     assert(counts[ix] !== 'x');
 
+    clicksRemaining--;
     solved[ix] = 'f';
 
     for (let rule of rulesByCell[ix]) {
@@ -277,7 +418,7 @@ function doSolve() {
 
     let cells = [];
     let remaining = counts[ix];
-    for (let n of getNeighbors(ix)) {
+    for (let n of getNeighbors(board, ix)) {
       if (solved[n] === 'm') {
         remaining--;
       } else if (!solved[n]) {
@@ -296,6 +437,7 @@ function doSolve() {
     assert(!solved[ix]);
     assert(counts[ix] === 'x');
 
+    flagsRemaining--;
     solved[ix] = 'm'
 
     for (let rule of rulesByCell[ix]) {
@@ -316,13 +458,183 @@ function doSolve() {
   }
 }
 
-function log(str) {
-  document.getElementById('log').textContent += str + '\n';
-}
+/***********************************************/
 
-function assert(condition) {
-  if (!condition) {
-    throw new Error('failed assert')
+function doSolve2(board, counts, startIx) {
+  let solved = [];
+  for (let i = 0; i < nRows * nCols; i++) {
+    solved.push(undefined);
+  }
+  let clicksRemaining = solved.length - board.mines.size;
+  let flagsRemaining = board.mines.size;
+  let flaggedSquares = 0;
+
+  let queueEmpty = [];
+  let rulesPass1 = new Set();
+  let rulesPass2 = new Set();
+  let rulesByCell = solved.map(() => new Set());
+
+  if (counts[startIx] !== 'x') {
+    click(startIx);
+  }
+
+  let done = false;
+  while (!done) {
+    if (!clicksRemaining) {
+      for (let [ix, value] of solved.entries()) {
+        if (!value) {
+          flag(ix);
+        }
+      }
+      done = true;
+    }
+    else if (!flagsRemaining) {
+      for (let [ix, value] of solved.entries()) {
+        if (!value) {
+          click(ix);
+        }
+      }
+      done = true;
+    } else if (queueEmpty.length) {
+      for (let n of getNeighbors(board, queueEmpty.pop())) {
+        if (solved[n]) {
+          continue;
+        }
+        click(n);
+      }
+    } else if (rulesPass1.size) {
+      let rule = popSet(rulesPass1);
+
+      // We could do something faster than the slice here if we removed he exception from
+      // removeValue
+      if (rule.max === 0) {
+        rule.cells.slice().forEach(n => click(n));
+      } else if (rule.min === rule.cells.length) {
+        rule.cells.slice().forEach(n => flag(n));
+      } else {
+        rulesPass2.add(rule);
+      }
+    } else if (rulesPass2.size) {
+      let rule = popSet(rulesPass2);
+
+      let otherRules = new Map();
+      for (let cell of rule.cells) {
+        for (let other of rulesByCell[cell]) {
+          let count = otherRules.get(other) ?? 0;
+          otherRules.set(other, count + 1);
+        }
+      }
+
+      for (let [other, overlapCount] of otherRules) {
+
+        if (rule.cells.length === overlapCount &&
+            other.cells.length === overlapCount) {
+          continue;
+        }
+
+        assert(rule.min <= (other.max + rule.cells.length - overlapCount));
+        assert(other.min <= (rule.max + other.cells.length - overlapCount));
+
+        function processOverlapping(rule1, rule2, overlapCount) {
+          if (rule1.min === (rule2.max + rule1.cells.length - overlapCount)) {
+            let rule1Cells = rule1.cells.slice();
+            let rule2Cells = rule2.cells.slice();
+            rule1Cells.forEach(n => {
+              if (!rule2Cells.includes(n)) {
+                flag(n);
+              }
+            })
+            rule2Cells.forEach(n => {
+              if (!rule1Cells.includes(n)) {
+                click(n);
+              }
+            })
+            assert(rule1.min === rule2.max);
+            if (rule1.max !== rule1.min) {
+              rule1.max = rule1.min;
+              rulesPass1.add(rule1);
+              rulesPass2.delete(rule1);
+            }
+            if (rule2.min !== rule2.max) {
+              rule2.min = rule2.max;
+              rulesPass1.add(rule2);
+              rulesPass2.delete(rule2);
+            }
+            return true;
+          }
+
+          return false;
+        }
+
+        if (processOverlapping(rule, other, overlapCount) ||
+            processOverlapping(other, rule, overlapCount)) {
+          break;
+        }
+      }
+    } else {
+      done = true;
+    }
+  }
+
+  return solved;
+
+  function click(ix) {
+    assert(!solved[ix]);
+    assert(counts[ix] !== 'x');
+
+    clicksRemaining--;
+    solved[ix] = 'f';
+
+    for (let rule of rulesByCell[ix]) {
+      removeValue(rule.cells, ix);
+      rulesPass1.add(rule);
+      rulesPass2.delete(rule);
+    }
+
+    if (counts[ix] === 0) {
+      queueEmpty.push(ix);
+      return;
+    }
+
+    let cells = [];
+    let remaining = counts[ix];
+    for (let n of getNeighbors(board, ix)) {
+      if (solved[n] === 'm') {
+        remaining--;
+      } else if (!solved[n]) {
+        cells.push(n);
+      }
+    }
+
+    addRule({
+      cells,
+      min: remaining,
+      max: remaining,
+    });
+  }
+
+  function flag(ix) {
+    assert(!solved[ix]);
+    assert(counts[ix] === 'x');
+
+    flagsRemaining--;
+    solved[ix] = 'm'
+
+    for (let rule of rulesByCell[ix]) {
+      removeValue(rule.cells, ix);
+      assert(rule.min !== 0);
+      rule.min--;
+      rule.max--;
+      rulesPass1.add(rule);
+      rulesPass2.delete(rule);
+    }
+  }
+
+  function addRule(rule) {
+    rulesPass1.add(rule);
+    for (let cell of rule.cells) {
+      rulesByCell[cell].add(rule);
+    }
   }
 }
 
