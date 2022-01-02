@@ -92,10 +92,11 @@ function generateBoard(nMines, seed) {
 const nRows = 10;
 const nCols = 10;
 const exampleBoards = 10;
-const nBoards = 1000;
+const nBoards = 5000;
 
-//compareSolvers(doSolve6, doSolve7, 20);
-testSolver(doSolve7, 20);
+// compareSolvers(doSolve7, doSolve8, 20);
+// compareSolvers(doSolve8, doSolve7, 20);
+testSolver(doSolve8, 20);
 
 function testSolver(solver, nMines) {
   let solved = runSolver(solver, nMines);
@@ -140,7 +141,8 @@ function compareSolvers(solver1, solver2, nMines) {
   let boardc = document.getElementById('boardc');
   let nDrawn = 0;
   for (let [i, count1] of solved1.solved.entries()) {
-    if (count1 != solved2.solved[i]) {
+    if (worse ? count1 > solved2.solved[i] : count1 != solved2.solved[i]) {
+      boardc.appendChild(document.createTextNode("board " + i))
       let board = generateBoard(nMines, i);
       let container = document.createElement('div');
       container.className = 'boardsContainer'
@@ -329,7 +331,7 @@ function assert(condition) {
 
 /***********************************************/
 
-function doSolve7(board, counts, startIx) {
+function doSolve8(board, counts, startIx) {
   let solved = [];
   for (let i = 0; i < nRows * nCols; i++) {
     solved.push(undefined);
@@ -439,6 +441,43 @@ function doSolve7(board, counts, startIx) {
             return modifiedApplicableRule;
           }
 
+          // Do we need to run this if the above returns false? It doesn't seem to produce
+          // a different result
+          // Creating a new rule here, rather than modifying the existing one, adds about 15%
+          // slowdown. But solves more situations until we are able to merge adjecent rules
+          if (rule2.cells.length === overlapCount && rule2.min === rule2.max) {
+            let newCells = rule1.cells.filter(n => !rule2.cells.includes(n));
+            let newMin = rule1.min - rule2.min;
+            let newMax = rule1.max - rule2.min;
+
+            assert(newCells.length);
+            let foundSame = false;
+            for (let maybeSame of rulesByCell[newCells[0]]) {
+              if (maybeSame.cells.length === newCells.length &&
+                  maybeSame.cells.every(ix => newCells.includes(ix))) {
+                foundSame = true;
+                if (newMin > maybeSame.min) {
+                  maybeSame.min = newMin;
+                  rulesPass1.add(maybeSame);
+                  rulesPass2.delete(maybeSame);
+                }
+                if (newMax < maybeSame.max) {
+                  maybeSame.max = newMax;
+                  rulesPass1.add(maybeSame);
+                  rulesPass2.delete(maybeSame);
+                }
+              }
+            }
+
+            if (!foundSame) {
+              addRule({
+                min: newMin,
+                max: newMax,
+                cells: newCells,
+              })
+            }
+          }
+
           return false;
         }
 
@@ -446,19 +485,6 @@ function doSolve7(board, counts, startIx) {
             processOverlapping(other, rule, overlapCount, 2)) {
           break;
         }
-
-        if (other.cells.length === overlapCount && other.min === other.max) {
-          rule.min -= other.min;
-          rule.max -= other.min;
-          rule.cells = rule.cells.filter(n => !other.cells.includes(n));
-          for (let n of other.cells) {
-            rulesByCell[n].delete(rule)
-          }
-          rulesPass1.add(rule);
-          rulesPass2.delete(rule);
-          break;
-        }
-
       }
     } else if (!addedTotalFlagsRule /*&& flagsRemaining < 10*/) {
       // We could bail early if there are rules that don't overlap with any other rules, since
