@@ -94,8 +94,8 @@ const nCols = 10;
 const exampleBoards = 10;
 const nBoards = 1000;
 
-//compareSolvers(doSolve3, doSolve5, 20);
-testSolver(doSolve5, 20);
+//compareSolvers(doSolve6, doSolve7, 20);
+testSolver(doSolve7, 20);
 
 function testSolver(solver, nMines) {
   let solved = runSolver(solver, nMines);
@@ -125,6 +125,17 @@ function compareSolvers(solver1, solver2, nMines) {
 
   log(`${solver1.name} solved ${getSolvedBoards(solved1.solved)} boards and ${getSolvedSquares(solved1.solved)} squares in ${solved1.time}ms`)
   log(`${solver2.name} solved ${getSolvedBoards(solved2.solved)} boards and ${getSolvedSquares(solved2.solved)} squares in ${solved2.time}ms`)
+
+  let better = 0;
+  let worse = 0;
+  for (let [i, count1] of solved1.solved.entries()) {
+    if (count1 < solved2.solved[i]) {
+      better++;
+    } else if (count1 > solved2.solved[i]) {
+      worse++;
+    }
+  }
+  log(`${solver2.name} got better on ${better} boards and worse on ${worse}`)
 
   let boardc = document.getElementById('boardc');
   let nDrawn = 0;
@@ -318,7 +329,7 @@ function assert(condition) {
 
 /***********************************************/
 
-function doSolve5(board, counts, startIx) {
+function doSolve7(board, counts, startIx) {
   let solved = [];
   for (let i = 0; i < nRows * nCols; i++) {
     solved.push(undefined);
@@ -395,18 +406,21 @@ function doSolve5(board, counts, startIx) {
         assert(rule.min <= (other.max + rule.cells.length - overlapCount));
         assert(other.min <= (rule.max + other.cells.length - overlapCount));
 
-        function processOverlapping(rule1, rule2, overlapCount) {
+        function processOverlapping(rule1, rule2, overlapCount, forWhichRule) {
           if (rule1.min === (rule2.max + rule1.cells.length - overlapCount)) {
+            let modifiedApplicableRule = false;
             let rule1Cells = rule1.cells.slice();
             let rule2Cells = rule2.cells.slice();
             for (let n of rule1Cells) {
               if (!rule2Cells.includes(n)) {
                 flag(n);
+                modifiedApplicableRule ||= forWhichRule === 1;
               }
             }
             for (let n of rule2Cells) {
               if (!rule1Cells.includes(n)) {
                 click(n);
+                modifiedApplicableRule ||= forWhichRule === 2;
               }
             }
             assert(rule1.min === rule2.max);
@@ -414,33 +428,37 @@ function doSolve5(board, counts, startIx) {
               rule1.max = rule1.min;
               rulesPass1.add(rule1);
               rulesPass2.delete(rule1);
+              modifiedApplicableRule ||= forWhichRule === 1;
             }
             if (rule2.min !== rule2.max) {
               rule2.min = rule2.max;
               rulesPass1.add(rule2);
               rulesPass2.delete(rule2);
+              modifiedApplicableRule ||= forWhichRule === 2;
             }
-            return true;
-          }
-          if (rule2.cells.length === overlapCount && rule2.min === rule2.max) {
-            rule1.min -= rule2.min;
-            rule1.max -= rule2.min;
-            rule1.cells = rule1.cells.filter(n => !rule2.cells.includes(n));
-            for (let n of rule2.cells) {
-              rulesByCell[n].delete(rule1)
-            }
-            rulesPass1.add(rule1);
-            rulesPass2.delete(rule1);
-            return true;
+            return modifiedApplicableRule;
           }
 
           return false;
         }
 
-        if (processOverlapping(rule, other, overlapCount) ||
-            processOverlapping(other, rule, overlapCount)) {
+        if (processOverlapping(rule, other, overlapCount, 1) ||
+            processOverlapping(other, rule, overlapCount, 2)) {
           break;
         }
+
+        if (other.cells.length === overlapCount && other.min === other.max) {
+          rule.min -= other.min;
+          rule.max -= other.min;
+          rule.cells = rule.cells.filter(n => !other.cells.includes(n));
+          for (let n of other.cells) {
+            rulesByCell[n].delete(rule)
+          }
+          rulesPass1.add(rule);
+          rulesPass2.delete(rule);
+          break;
+        }
+
       }
     } else if (!addedTotalFlagsRule /*&& flagsRemaining < 10*/) {
       // We could bail early if there are rules that don't overlap with any other rules, since
