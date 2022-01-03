@@ -65,38 +65,23 @@ td {
 <script>
 "use strict";
 
-function generateBoard(nMines, seed) {
-  function rnd(max) {
-    seed = seed * 0x915f77f5 + 1
-    return seed % max
-  }
-  rnd(10);
-  rnd(10);
-
-  const nums = [];
-  const mines = new Set();
-  for (let i = 0; i < nRows * nCols; i++) {
-    nums.push(i);
-  }
-  for (let i = 0; i < nMines; i++) {
-    let r = rnd(nums.length);
-    mines.add(nums[r]);
-    nums.splice(r, 1);
-  }
-
-  return {
-    mines,
-  }
-}
-
 const nRows = 10;
 const nCols = 10;
 const exampleBoards = 10;
 const nBoards = 5000;
 
-// compareSolvers(doSolve7, doSolve8, 20);
-// compareSolvers(doSolve8, doSolve7, 20);
-testSolver(doSolve8, 20);
+// compareSolvers(doSolve9, doSolve10, 20);
+// compareSolvers(doSolve10, doSolve9, 20);
+
+testSolver(doSolve9, 20);
+
+// solveBoard(doSolve9, 429, 20)
+
+function solveBoard(solver, boardSeed, nMines) {
+  let board = generateBoard(nMines, boardSeed);
+  drawBoard(board, solver, document.getElementById('boardc'));
+}
+
 
 function testSolver(solver, nMines) {
   let solved = runSolver(solver, nMines);
@@ -154,6 +139,30 @@ function compareSolvers(solver1, solver2, nMines) {
         break;
       }
     }
+  }
+}
+
+function generateBoard(nMines, seed) {
+  function rnd(max) {
+    seed = seed * 0x915f77f5 + 1
+    return seed % max
+  }
+  rnd(10);
+  rnd(10);
+
+  const nums = [];
+  const mines = new Set();
+  for (let i = 0; i < nRows * nCols; i++) {
+    nums.push(i);
+  }
+  for (let i = 0; i < nMines; i++) {
+    let r = rnd(nums.length);
+    mines.add(nums[r]);
+    nums.splice(r, 1);
+  }
+
+  return {
+    mines,
   }
 }
 
@@ -331,14 +340,13 @@ function assert(condition) {
 
 /***********************************************/
 
-function doSolve8(board, counts, startIx) {
+function doSolve9(board, counts, startIx) {
   let solved = [];
   for (let i = 0; i < nRows * nCols; i++) {
     solved.push(undefined);
   }
   let clicksRemaining = solved.length - board.mines.size;
   let flagsRemaining = board.mines.size;
-  let flaggedSquares = 0;
 
   let queueEmpty = [];
   let rulesPass1 = new Set();
@@ -438,7 +446,12 @@ function doSolve8(board, counts, startIx) {
               rulesPass2.delete(rule2);
               modifiedApplicableRule ||= forWhichRule === 2;
             }
-            return modifiedApplicableRule;
+            assert(rule1.cells.length === rule2.cells.length);
+            assert(rule1.cells.length === overlapCount);
+            assert(rule1.cells.every(ix => rule2.cells.includes(ix)));
+            assert(rule2.cells.every(ix => rule1.cells.includes(ix)));
+            rule2.ignoreForFlagRule = true;
+            return modifiedApplicableRule ? 'applicable' : 'other';
           }
 
           // Do we need to run this if the above returns false? It doesn't seem to produce
@@ -446,6 +459,7 @@ function doSolve8(board, counts, startIx) {
           // Creating a new rule here, rather than modifying the existing one, adds about 15%
           // slowdown. But solves more situations until we are able to merge adjecent rules
           if (rule2.cells.length === overlapCount && rule2.min === rule2.max) {
+            rule1.ignoreForFlagRule = true;
             let newCells = rule1.cells.filter(n => !rule2.cells.includes(n));
             let newMin = rule1.min - rule2.min;
             let newMax = rule1.max - rule2.min;
@@ -481,8 +495,12 @@ function doSolve8(board, counts, startIx) {
           return false;
         }
 
-        if (processOverlapping(rule, other, overlapCount, 1) ||
-            processOverlapping(other, rule, overlapCount, 2)) {
+        let res = processOverlapping(rule, other, overlapCount, 1);
+        if (!res) {
+          res = processOverlapping(other, rule, overlapCount, 2);
+        }
+
+        if (res === 'applicable') {
           break;
         }
       }
@@ -515,7 +533,7 @@ function doSolve8(board, counts, startIx) {
 
           // It's not helpful if adding this rule covers all the remaining cells
           // since that would leave no cells to click or flag
-          if (cellsRemaining === rule.cells.length) {
+          if (rule.ignoreForFlagRule || cellsRemaining === rule.cells.length) {
             continue;
           }
 
