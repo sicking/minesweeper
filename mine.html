@@ -446,10 +446,8 @@ function doSolve9(board, counts, startIx) {
               rulesPass2.delete(rule2);
               modifiedApplicableRule ||= forWhichRule === 2;
             }
-            assert(rule1.cells.length === rule2.cells.length);
-            assert(rule1.cells.length === overlapCount);
-            assert(rule1.cells.every(ix => rule2.cells.includes(ix)));
-            assert(rule2.cells.every(ix => rule1.cells.includes(ix)));
+            assert(rule1.cells.length === overlapCount && rule2.cells.length === overlapCount);
+            // We could delete one of the two rules here as they should be identical
             rule2.ignoreForFlagRule = true;
             return modifiedApplicableRule ? 'applicable' : 'other';
           }
