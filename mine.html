@@ -68,10 +68,10 @@ td {
 const nRows = 10;
 const nCols = 10;
 const exampleBoards = 10;
-const nBoards = 5000;
+const nBoards = 1000;
 
-compareSolvers(doSolve11, doSolve12, 20);
-compareSolvers(doSolve12, doSolve11, 20);
+compareSolvers(doSolve13, doSolve14, 20);
+// compareSolvers(doSolve14, doSolve13, 20);
 
 // testSolver(doSolve11, 20);
 
@@ -272,7 +272,7 @@ function drawBoard(board, solver, parent) {
 
 }
 
-function getNeighbors(board, ix) {
+function getNeighbors(ix) {
   assert(typeof ix === 'number');
 
   let col = ix % nCols;
@@ -282,11 +282,11 @@ function getNeighbors(board, ix) {
     [-1,-1],
     [-1,0],
     [-1,1],
-    [0,1],
-    [1,1],
-    [1,0],
-    [1,-1],
     [0,-1],
+    [0,1],
+    [1,-1],
+    [1,0],
+    [1,1],
   ].forEach(delta => {
     let newRow = row + delta[0];
     let newCol = col + delta[1];
@@ -305,7 +305,7 @@ function calculateCounts(board) {
       c = 'x'
     } else {
       c = 0
-      for (let neighbor of getNeighbors(board, ix)) {
+      for (let neighbor of getNeighbors(ix)) {
         if (board.mines.has(neighbor)) {
           c++;
         }
@@ -340,7 +340,7 @@ function assert(condition) {
 
 /***********************************************/
 
-function doSolve12(board, counts, startIx) {
+function doSolve14(board, counts, startIx) {
   let solved = [];
   for (let i = 0; i < nRows * nCols; i++) {
     solved.push(undefined);
@@ -376,7 +376,7 @@ function doSolve12(board, counts, startIx) {
       }
       done = true;
     } else if (queueEmpty.length) {
-      for (let n of getNeighbors(board, queueEmpty.pop())) {
+      for (let n of getNeighbors(queueEmpty.pop())) {
         if (solved[n]) {
           continue;
         }
@@ -427,7 +427,7 @@ function doSolve12(board, counts, startIx) {
             let newMin = Math.max(rule1.min - rule2.max, 0);
             let newMax = Math.min(rule1.max - rule2.min, rule1.cells.length - overlapCount);
             if (newMin != 0 || newMax != rule1.cells.length - overlapCount) {
-              checkAndAddRule({
+              addRule({
                 min: newMin,
                 max: newMax,
                 cells: rule1.cells.filter(n => !rule2.cells.includes(n)),
@@ -446,7 +446,7 @@ function doSolve12(board, counts, startIx) {
           let overlapMin = Math.max(rule.min - (rule.cells.length - overlapCount), other.min - (other.cells.length - overlapCount), 0);
           let overlapMax = Math.min(rule.max, other.max, overlapCount);
           if (overlapMin != 0 || overlapMax != overlapCount) {
-            checkAndAddRule({
+            addRule({
               min: overlapMin,
               max: overlapMax,
               cells: rule.cells.filter(n => other.cells.includes(n)),
@@ -568,7 +568,7 @@ function doSolve12(board, counts, startIx) {
 
     let cells = [];
     let remaining = counts[ix];
-    for (let n of getNeighbors(board, ix)) {
+    for (let n of getNeighbors(ix)) {
       if (solved[n] === 'm') {
         remaining--;
       } else if (!solved[n]) {
@@ -608,21 +608,9 @@ function doSolve12(board, counts, startIx) {
     assert(rule.max <= rule.cells.length);
     assert(rule.cells.length > 0);
     assert(rule.min > 0 || rule.max < rule.cells.length);
-    rulesPass1.add(rule);
-    for (let cell of rule.cells) {
-      rulesByCell[cell].add(rule);
-    }
-  }
-
-  function checkAndAddRule(rule) {
-    assert(0 <= rule.min);
-    assert(rule.min <= rule.max);
-    assert(rule.max <= rule.cells.length);
-    assert(rule.cells.length > 0);
-    assert(rule.min > 0 || rule.max < rule.cells.length);
     for (let other of rulesByCell[rule.cells[0]]) {
       if (other.cells.length === rule.cells.length &&
-          other.cells.every(ix => rule.cells.includes(ix))) {
+          other.cells.every((cell, i) => rule.cells[i] === cell)) {
         if (rule.min > other.min) {
           other.min = rule.min;
           rulesPass1.add(other);
@@ -642,7 +630,10 @@ function doSolve12(board, counts, startIx) {
       }
     }
 
-    addRule(rule);
+    rulesPass1.add(rule);
+    for (let cell of rule.cells) {
+      rulesByCell[cell].add(rule);
+    }
   }
 }
 
