@@ -70,10 +70,10 @@ const nCols = 10;
 const exampleBoards = 10;
 const nBoards = 5000;
 
-// compareSolvers(doSolve9, doSolve10, 20);
-// compareSolvers(doSolve10, doSolve9, 20);
+//compareSolvers(doSolve9, doSolve10, 20);
+//compareSolvers(doSolve9, doSolve11, 20);
 
-testSolver(doSolve9, 20);
+testSolver(doSolve11, 20);
 
 // solveBoard(doSolve9, 429, 20)
 
@@ -340,7 +340,7 @@ function assert(condition) {
 
 /***********************************************/
 
-function doSolve9(board, counts, startIx) {
+function doSolve11(board, counts, startIx) {
   let solved = [];
   for (let i = 0; i < nRows * nCols; i++) {
     solved.push(undefined);
@@ -351,6 +351,7 @@ function doSolve9(board, counts, startIx) {
   let queueEmpty = [];
   let rulesPass1 = new Set();
   let rulesPass2 = new Set();
+  let rulesPass3 = new Set();
   let rulesByCell = solved.map(() => new Set());
 
   if (counts[startIx] !== 'x') {
@@ -405,6 +406,7 @@ function doSolve9(board, counts, startIx) {
         }
       }
 
+      let didModifyRule = false;
       for (let [other, overlapCount] of otherRules) {
 
         if ((rule.cells.length === overlapCount &&
@@ -438,12 +440,14 @@ function doSolve9(board, counts, startIx) {
               rule1.max = rule1.min;
               rulesPass1.add(rule1);
               rulesPass2.delete(rule1);
+              rulesPass3.delete(rule1);
               modifiedApplicableRule ||= forWhichRule === 1;
             }
             if (rule2.min !== rule2.max) {
               rule2.min = rule2.max;
               rulesPass1.add(rule2);
               rulesPass2.delete(rule2);
+              rulesPass3.delete(rule2);
               modifiedApplicableRule ||= forWhichRule === 2;
             }
             assert(rule1.cells.length === overlapCount && rule2.cells.length === overlapCount);
@@ -456,37 +460,20 @@ function doSolve9(board, counts, startIx) {
           // a different result
           // Creating a new rule here, rather than modifying the existing one, adds about 15%
           // slowdown. But solves more situations until we are able to merge adjecent rules
-          if (rule2.cells.length === overlapCount && rule2.min === rule2.max) {
-            rule1.ignoreForFlagRule = true;
-            let newCells = rule1.cells.filter(n => !rule2.cells.includes(n));
-            let newMin = rule1.min - rule2.min;
-            let newMax = rule1.max - rule2.min;
-
-            assert(newCells.length);
-            let foundSame = false;
-            for (let maybeSame of rulesByCell[newCells[0]]) {
-              if (maybeSame.cells.length === newCells.length &&
-                  maybeSame.cells.every(ix => newCells.includes(ix))) {
-                foundSame = true;
-                if (newMin > maybeSame.min) {
-                  maybeSame.min = newMin;
-                  rulesPass1.add(maybeSame);
-                  rulesPass2.delete(maybeSame);
-                }
-                if (newMax < maybeSame.max) {
-                  maybeSame.max = newMax;
-                  rulesPass1.add(maybeSame);
-                  rulesPass2.delete(maybeSame);
-                }
-              }
+          if (rule2.cells.length === overlapCount) {
+            if (rule2.min == rule2.max) {
+              rule1.ignoreForFlagRule = true;
             }
-
-            if (!foundSame) {
-              addRule({
+            let newMin = Math.max(rule1.min - rule2.max, 0);
+            let newMax = Math.min(rule1.max - rule2.min, rule1.cells.length - overlapCount);
+            if (newMin != 0 || newMax != rule1.cells.length - overlapCount) {
+              checkAndAddRule({
                 min: newMin,
                 max: newMax,
-                cells: newCells,
+                cells: rule1.cells.filter(n => !rule2.cells.includes(n)),
               })
+            } else {
+              assert(rule1.min != rule1.max || rule2.min != rule2.max);
             }
           }
 
@@ -499,7 +486,43 @@ function doSolve9(board, counts, startIx) {
         }
 
         if (res === 'applicable') {
+          didModifyRule = true;
           break;
+        }
+      }
+      if (!didModifyRule) {
+        rulesPass3.add(rule);
+      }
+    } else if (rulesPass3.size) {
+      let rule = popSet(rulesPass3);
+
+      let otherRules = new Map();
+      for (let cell of rule.cells) {
+        for (let other of rulesByCell[cell]) {
+          let count = otherRules.get(other) ?? 0;
+          otherRules.set(other, count + 1);
+        }
+      }
+
+      for (let [other, overlapCount] of otherRules) {
+
+        if ((rule.cells.length === overlapCount &&
+             other.cells.length === overlapCount) ||
+            overlapCount === 1) {
+          continue;
+        }
+
+        assert(rule.min <= (other.max + rule.cells.length - overlapCount));
+        assert(other.min <= (rule.max + other.cells.length - overlapCount));
+
+        let overlapMin = Math.max(rule.min - (rule.cells.length - overlapCount), other.min - (other.cells.length - overlapCount), 0);
+        let overlapMax = Math.min(rule.max, other.max, overlapCount);
+        if (overlapMin != 0 || overlapMax != overlapCount) {
+          checkAndAddRule({
+            min: overlapMin,
+            max: overlapMax,
+            cells: rule.cells.filter(n => other.cells.includes(n)),
+          });
         }
       }
     } else if (!addedTotalFlagsRule /*&& flagsRemaining < 10*/) {
@@ -511,7 +534,9 @@ function doSolve9(board, counts, startIx) {
       for (let [ix, cellRules] of rulesByCell.entries()) {
         if (!solved[ix]) {
           for (let rule of cellRules) {
-            foundRules.add(rule);
+            if (!rule.ignoreForFlagRule && rule.min == rule.max) {
+              foundRules.add(rule);
+            }
           }
         }
       }
@@ -531,7 +556,7 @@ function doSolve9(board, counts, startIx) {
 
           // It's not helpful if adding this rule covers all the remaining cells
           // since that would leave no cells to click or flag
-          if (rule.ignoreForFlagRule || cellsRemaining === rule.cells.length) {
+          if (cellsRemaining === rule.cells.length) {
             continue;
           }
 
@@ -545,11 +570,10 @@ function doSolve9(board, counts, startIx) {
           maxFlagsRemaining -= rule.min;
           maxClicksRemaining -= rule.cells.length - rule.max;
           cellsRemaining -= rule.cells.length;
+          rule.cells.forEach(ix => covered[ix] = true);
 
           assert(maxFlagsRemaining >= 0);
           assert(maxClicksRemaining >= 0);
-
-          rule.cells.forEach(ix => covered[ix] = true);
 
           // Check if adding this rule covers enough cells that remaining ones are either all
           // clear or all mines
@@ -606,6 +630,7 @@ function doSolve9(board, counts, startIx) {
       removeValue(rule.cells, ix);
       rulesPass1.add(rule);
       rulesPass2.delete(rule);
+      rulesPass3.delete(rule);
     }
 
     if (counts[ix] === 0) {
@@ -623,11 +648,13 @@ function doSolve9(board, counts, startIx) {
       }
     }
 
-    addRule({
-      cells,
-      min: remaining,
-      max: remaining,
-    });
+    if (cells.length) {
+      addRule({
+        cells,
+        min: remaining,
+        max: remaining,
+      });
+    }
   }
 
   function flag(ix) {
@@ -639,19 +666,58 @@ function doSolve9(board, counts, startIx) {
 
     for (let rule of rulesByCell[ix]) {
       removeValue(rule.cells, ix);
-      assert(rule.min !== 0);
-      rule.min--;
+      assert(rule.max !== 0);
+      rule.min = Math.max(rule.min - 1, 0);
       rule.max--;
       rulesPass1.add(rule);
       rulesPass2.delete(rule);
+      rulesPass3.delete(rule);
     }
   }
 
   function addRule(rule) {
+    assert(0 <= rule.min);
+    assert(rule.min <= rule.max);
+    assert(rule.max <= rule.cells.length);
+    assert(rule.cells.length > 0);
+    assert(rule.min > 0 || rule.max < rule.cells.length);
     rulesPass1.add(rule);
     for (let cell of rule.cells) {
       rulesByCell[cell].add(rule);
     }
+  }
+
+  function checkAndAddRule(rule) {
+    assert(0 <= rule.min);
+    assert(rule.min <= rule.max);
+    assert(rule.max <= rule.cells.length);
+    assert(rule.cells.length > 0);
+    assert(rule.min > 0 || rule.max < rule.cells.length);
+    for (let other of rulesByCell[rule.cells[0]]) {
+      if (other.cells.length === rule.cells.length &&
+          other.cells.every(ix => rule.cells.includes(ix))) {
+        if (rule.min > other.min) {
+          other.min = rule.min;
+          rulesPass1.add(other);
+          rulesPass2.delete(other);
+          rulesPass3.delete(other);
+        }
+        if (rule.max < other.max) {
+          other.max = rule.max;
+          rulesPass1.add(other);
+          rulesPass2.delete(other);
+          rulesPass3.delete(other);
+        }
+        assert(0 <= other.min);
+        assert(other.min <= other.max);
+        assert(other.max <= other.cells.length);
+        assert(other.cells.length > 0);
+        assert(other.min > 0 || other.max < other.cells.length);
+        return;
+      }
+    }
+
+    addRule(rule);
   }
 }
 
