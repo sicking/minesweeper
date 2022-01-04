@@ -459,6 +459,9 @@ function doSolve14(board, counts, startIx) {
       // we will never get more information about that rule. So while we could solve more cells
       // we can't ever solve them all.
       // OOH if we implement a "scramble remaining cells" strategy, that could be fine.
+      // The 'rule.min === rule.max' filter here speeds things up by a lot, but does make us fail
+      // a few more situations. However those situations are quite hard for a human to detect.
+      // And possibly there are better ways of catching those situations
       let foundRules = new Set();
       for (let [ix, cellRules] of rulesByCell.entries()) {
         if (!solved[ix]) {
