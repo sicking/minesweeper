@@ -68,9 +68,9 @@ td {
 const nRows = 10;
 const nCols = 10;
 const exampleBoards = 10;
-const nBoards = 1000;
+const nBoards = 5000;
 
-compareSolvers(doSolve13, doSolve14, 20);
+compareSolvers(doSolve14, doSolve15, 20);
 // compareSolvers(doSolve14, doSolve13, 20);
 
 // testSolver(doSolve11, 20);
@@ -340,7 +340,7 @@ function assert(condition) {
 
 /***********************************************/
 
-function doSolve14(board, counts, startIx) {
+function doSolve15(board, counts, startIx) {
   let solved = [];
   for (let i = 0; i < nRows * nCols; i++) {
     solved.push(undefined);
@@ -357,7 +357,6 @@ function doSolve14(board, counts, startIx) {
     click(startIx);
   }
 
-  let addedTotalFlagsRule = false;
   let done = false;
   while (!done) {
     if (!clicksRemaining) {
@@ -454,7 +453,7 @@ function doSolve14(board, counts, startIx) {
           }
         }
       }
-    } else if (!addedTotalFlagsRule /*&& flagsRemaining < 10*/) {
+    } else {
       // We could bail early if there are rules that don't overlap with any other rules, since
       // we will never get more information about that rule. So while we could solve more cells
       // we can't ever solve them all.
@@ -479,7 +478,7 @@ function doSolve14(board, counts, startIx) {
       let maxClicksRemaining = clicksRemaining;
 
       if (!iterateMore(0)) {
-        addedTotalFlagsRule = true;
+        done = true;
       }
 
       function iterateMore(startIx) {
@@ -544,8 +543,6 @@ function doSolve14(board, counts, startIx) {
         }
         return false;
       }
-    } else {
-      done = true;
     }
   }
 
