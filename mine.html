@@ -75,14 +75,12 @@ const nBoards = 5000;
 const nSolvable = 5;
 const maxSolvableTime = 2500;
 
-// compareSolvers(doSolve, doSolveX, 20);
-// compareSolvers(doSolveX, doSolve, 20);
+// compareSolvers(doSolve, doSolveWithPartial, 20);
+// compareSolvers(doSolveWithPartial, doSolveWithUnbalanced, 20);
 
-// testSolver(doSolve, 20);
+testSolver(doSolve, 20);
 
-// solveBoard(doSolve, 31, 40, 73)
-
-generateSolvableBoards(doSolve, 31);
+// generateSolvableBoards(doSolve, 31);
 
 function generateSolvableBoards(solver, nMines) {
   let startTime = performance.now()
@@ -131,9 +129,13 @@ function generateSolvableBoards(solver, nMines) {
   boardc.insertBefore(document.createTextNode(`generated ${boardCounter} boards in ${Math.floor(performance.now() - startTime)}ms`), boardc.firstChild)
 }
 
+// solveBoard(doSolveWithPartial, 593, 20)
+
 function solveBoard(solver, boardSeed, nMines, providedStartIx) {
   let board = generateBoard(nMines, boardSeed);
   drawBoard(board, solver, document.getElementById('boardc'), providedStartIx);
+  let boardc = document.getElementById('boardc');
+  boardc.appendChild(document.createElement('hr'));
 }
 
 
@@ -527,7 +529,7 @@ function doSolve(board, counts, startIx) {
         }
       }
       let rules = Array.from(foundRules);
-      let covered = solved.map(() => false);
+      let covered = solved.map(() => 0);
       let cellsRemaining = flagsRemaining + clicksRemaining;
       let maxFlagsRemaining = flagsRemaining;
       let maxClicksRemaining = clicksRemaining;
@@ -542,23 +544,37 @@ function doSolve(board, counts, startIx) {
         ruleLoop: for (let ruleIx = startIx; ruleIx < rules.length; ruleIx++) {
           let rule = rules[ruleIx];
 
-          // It's not helpful if adding this rule covers all the remaining cells
-          // since that would leave no cells to click or flag
-          if (cellsRemaining === rule.cells.length) {
-            continue;
-          }
-
           // Check if we can add this rule
+          let overlap = 0
           for (let cell of rule.cells) {
             if (covered[cell]) {
-              continue ruleLoop;
+              overlap++;
             }
           }
 
-          maxFlagsRemaining -= rule.min;
-          maxClicksRemaining -= rule.cells.length - rule.max;
-          cellsRemaining -= rule.cells.length;
-          rule.cells.forEach(ix => covered[ix] = true);
+          // It's not helpful if adding this rule covers all the remaining cells
+          // since that would leave no cells to click or flag
+          if (cellsRemaining === rule.cells.length - overlap) {
+            continue;
+          }
+
+
+          let useful = false;
+          if (overlap < rule.min) {
+            maxFlagsRemaining -= rule.min - overlap;
+            useful = true;
+          }
+          if (overlap < (rule.cells.length - rule.max)) {
+            maxClicksRemaining -= rule.cells.length - rule.max - overlap;
+            useful = true;
+          }
+
+          if (!useful) {
+            continue ruleLoop;
+          }
+
+          cellsRemaining -= rule.cells.length - overlap;
+          rule.cells.forEach(ix => covered[ix]++);
           appliedRules.push(ruleIx);
 
           assert(maxFlagsRemaining >= 0);
@@ -595,12 +611,18 @@ function doSolve(board, counts, startIx) {
           }
 
           assert(appliedRules.pop() == ruleIx);
-          maxFlagsRemaining += rule.min;
-          maxClicksRemaining += rule.cells.length - rule.max;
-          cellsRemaining += rule.cells.length;
+
+          if (overlap < rule.min) {
+            maxFlagsRemaining += rule.min - overlap;
+          }
+          if (overlap < (rule.cells.length - rule.max)) {
+            maxClicksRemaining += rule.cells.length - rule.max - overlap;
+          }
+          cellsRemaining += rule.cells.length - overlap;
+
           rule.cells.forEach(ix => {
             assert(covered[ix]);
-            covered[ix] = false;
+            covered[ix]--;
           });
         }
         return false;
