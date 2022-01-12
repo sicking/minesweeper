@@ -32,6 +32,9 @@ td {
 .unsolved {
   background-image: url('unsolved.svg');
 }
+.solved0.startCell {
+  background-image: url('start.svg');
+}
 .solved0 {
   background-image: url('nr0.svg');
 }
@@ -69,24 +72,75 @@ const nRows = 10;
 const nCols = 10;
 const exampleBoards = 10;
 const nBoards = 5000;
+const nSolvable = 5;
+const maxSolvableTime = 2500;
 
-compareSolvers(doSolve14, doSolve15, 20);
-// compareSolvers(doSolve14, doSolve13, 20);
+// compareSolvers(doSolve, doSolveX, 20);
+// compareSolvers(doSolveX, doSolve, 20);
 
-// testSolver(doSolve11, 20);
+// testSolver(doSolve, 20);
 
-// solveBoard(doSolve9, 429, 20)
+// solveBoard(doSolve, 31, 40, 73)
 
-function solveBoard(solver, boardSeed, nMines) {
+generateSolvableBoards(doSolve, 31);
+
+function generateSolvableBoards(solver, nMines) {
+  let startTime = performance.now()
+  let seed = 0;
+  let boardCounter = 0;
+  outerSolvableLoop: while (boardCounter < nSolvable) {
+    let foundBoard;
+    let foundStartIx;
+    while (!foundBoard) {
+      if (performance.now() > startTime + maxSolvableTime) {
+        break outerSolvableLoop;
+      }
+      seed++;
+      let board = generateBoard(nMines, seed);
+      let counts = calculateCounts(board);
+      let startCandidates = new Set();
+      counts.forEach((count, i) => {
+        if (count === 0) {
+          startCandidates.add(i);
+        }
+      })
+
+      while (startCandidates.size) {
+        let startIx = popSet(startCandidates);
+        let solved = solver(board, counts, startIx);
+        let nSolved = 0;
+        for (let [i, solve] of solved.entries()) {
+          if (solve) {
+            nSolved++;
+            startCandidates.delete(i);
+          }
+        }
+        if (nSolved === nRows * nCols) {
+          foundBoard = board;
+          foundStartIx = startIx;
+          break;
+        }
+      }
+    }
+    let boardc = document.getElementById('boardc');
+    boardc.appendChild(document.createElement('hr'));
+    boardc.appendChild(document.createTextNode("board " + seed))
+    drawBoard(foundBoard, solver, boardc, foundStartIx);
+    boardCounter++;
+  }
+  boardc.insertBefore(document.createTextNode(`generated ${boardCounter} boards in ${Math.floor(performance.now() - startTime)}ms`), boardc.firstChild)
+}
+
+function solveBoard(solver, boardSeed, nMines, providedStartIx) {
   let board = generateBoard(nMines, boardSeed);
-  drawBoard(board, solver, document.getElementById('boardc'));
+  drawBoard(board, solver, document.getElementById('boardc'), providedStartIx);
 }
 
 
 function testSolver(solver, nMines) {
   let solved = runSolver(solver, nMines);
 
-  log(`${solver.name} solved ${getSolvedBoards(solved.solved)} boards and ${getSolvedSquares(solved.solved)} squares in ${solved.time}ms`)
+  log(`${solver.name} solved ${getSolvedBoards(solved.solved)}/${nBoards} boards and ${getSolvedSquares(solved.solved)} squares in ${solved.time}ms`)
 
   let boardc = document.getElementById('boardc');
   let nDrawn = 0;
@@ -109,8 +163,8 @@ function compareSolvers(solver1, solver2, nMines) {
   let solved1 = runSolver(solver1, nMines);
   let solved2 = runSolver(solver2, nMines);
 
-  log(`${solver1.name} solved ${getSolvedBoards(solved1.solved)} boards and ${getSolvedSquares(solved1.solved)} squares in ${solved1.time}ms`)
-  log(`${solver2.name} solved ${getSolvedBoards(solved2.solved)} boards and ${getSolvedSquares(solved2.solved)} squares in ${solved2.time}ms`)
+  log(`${solver1.name} solved ${getSolvedBoards(solved1.solved)}/${nBoards} boards and ${getSolvedSquares(solved1.solved)} squares in ${solved1.time}ms`)
+  log(`${solver2.name} solved ${getSolvedBoards(solved2.solved)}/${nBoards} boards and ${getSolvedSquares(solved2.solved)} squares in ${solved2.time}ms`)
 
   let better = 0;
   let worse = 0;
@@ -143,8 +197,16 @@ function compareSolvers(solver1, solver2, nMines) {
 }
 
 function generateBoard(nMines, seed) {
+  function umul(a, b) {
+    let ah = (a >> 16) & 0xffff
+    let al = a & 0xffff;
+    let bh = (b >> 16) & 0xffff
+    let bl = b & 0xffff;
+    let high = ((ah * bl) + (al * bh)) & 0xffff;
+    return ((high << 16)>>>0) + (al * bl);
+  }
   function rnd(max) {
-    seed = seed * 0x915f77f5 + 1
+    seed = (umul(seed, 0x915f77f5) + 1) >>> 0
     return seed % max
   }
   rnd(10);
@@ -157,9 +219,13 @@ function generateBoard(nMines, seed) {
   }
   for (let i = 0; i < nMines; i++) {
     let r = rnd(nums.length);
+    assert(r >= 0 && r < nums.length);
+    assert(!mines.has(nums[r]));
     mines.add(nums[r]);
     nums.splice(r, 1);
   }
+
+  assert(mines.size === nMines);
 
   return {
     mines,
@@ -205,7 +271,7 @@ function getSolvedSquares(solved) {
   return res;
 }
 
-function drawBoard(board, solver, parent) {
+function drawBoard(board, solver, parent, providedStartIx) {
   board = {
     ...board,
     mines: new Set(board.mines)
@@ -236,17 +302,11 @@ function drawBoard(board, solver, parent) {
 
   function updateBoard() {
     let counts = calculateCounts(board);
-    let startIx = counts.indexOf(0);
-    assert(startIx !== -1);
+    let startIx = providedStartIx ?? counts.indexOf(0);
+    assert(startIx >= 0);
 
     let err;
-    let solved;
-    try {
-      solved = solver(board, counts, startIx);
-    } catch (ex) {
-      err = ex;
-      solved = [];
-    }
+    let solved = solver(board, counts, startIx);
 
     for (let [i, cell] of cells.entries()) {
       if (counts[i] === 'x' && solved[i]) {
@@ -259,14 +319,9 @@ function drawBoard(board, solver, parent) {
         cell.className = 'unsolved'
       }
 
-      // if (i === startIx) {
-      //   cell.className += ' startCell';
-      // }
-    }
-
-    if (err) {
-      log(err.message);
-      throw err;
+      if (i === startIx) {
+        cell.className += ' startCell';
+      }
     }
   }
 
@@ -340,7 +395,7 @@ function assert(condition) {
 
 /***********************************************/
 
-function doSolve15(board, counts, startIx) {
+function doSolve(board, counts, startIx) {
   let solved = [];
   for (let i = 0; i < nRows * nCols; i++) {
     solved.push(undefined);
@@ -457,7 +512,7 @@ function doSolve15(board, counts, startIx) {
       // We could bail early if there are rules that don't overlap with any other rules, since
       // we will never get more information about that rule. So while we could solve more cells
       // we can't ever solve them all.
-      // OOH if we implement a "scramble remaining cells" strategy, that could be fine.
+      // OTOH if we implement a "scramble remaining cells" strategy, that could be fine.
       // The 'rule.min === rule.max' filter here speeds things up by a lot, but does make us fail
       // a few more situations. However those situations are quite hard for a human to detect.
       // And possibly there are better ways of catching those situations
@@ -476,6 +531,8 @@ function doSolve15(board, counts, startIx) {
       let cellsRemaining = flagsRemaining + clicksRemaining;
       let maxFlagsRemaining = flagsRemaining;
       let maxClicksRemaining = clicksRemaining;
+
+      let appliedRules = []
 
       if (!iterateMore(0)) {
         done = true;
@@ -502,6 +559,7 @@ function doSolve15(board, counts, startIx) {
           maxClicksRemaining -= rule.cells.length - rule.max;
           cellsRemaining -= rule.cells.length;
           rule.cells.forEach(ix => covered[ix] = true);
+          appliedRules.push(ruleIx);
 
           assert(maxFlagsRemaining >= 0);
           assert(maxClicksRemaining >= 0);
@@ -536,10 +594,14 @@ function doSolve15(board, counts, startIx) {
             return true;
           }
 
+          assert(appliedRules.pop() == ruleIx);
           maxFlagsRemaining += rule.min;
           maxClicksRemaining += rule.cells.length - rule.max;
           cellsRemaining += rule.cells.length;
-          rule.cells.forEach(ix => covered[ix] = false);
+          rule.cells.forEach(ix => {
+            assert(covered[ix]);
+            covered[ix] = false;
+          });
         }
         return false;
       }
@@ -553,7 +615,7 @@ function doSolve15(board, counts, startIx) {
     assert(counts[ix] !== 'x');
 
     clicksRemaining--;
-    solved[ix] = 'f';
+    solved[ix] = 'c';
 
     for (let rule of rulesByCell[ix]) {
       removeValue(rule.cells, ix);
@@ -590,7 +652,7 @@ function doSolve15(board, counts, startIx) {
     assert(counts[ix] === 'x');
 
     flagsRemaining--;
-    solved[ix] = 'm'
+    solved[ix] = 'm';
 
     for (let rule of rulesByCell[ix]) {
       removeValue(rule.cells, ix);
@@ -603,11 +665,6 @@ function doSolve15(board, counts, startIx) {
   }
 
   function addRule(rule) {
-    assert(0 <= rule.min);
-    assert(rule.min <= rule.max);
-    assert(rule.max <= rule.cells.length);
-    assert(rule.cells.length > 0);
-    assert(rule.min > 0 || rule.max < rule.cells.length);
     for (let other of rulesByCell[rule.cells[0]]) {
       if (other.cells.length === rule.cells.length &&
           other.cells.every((cell, i) => rule.cells[i] === cell)) {
@@ -634,6 +691,15 @@ function doSolve15(board, counts, startIx) {
     for (let cell of rule.cells) {
       rulesByCell[cell].add(rule);
     }
+  }
+
+  function validateRule(rule) {
+    assert(0 <= rule.min);
+    assert(rule.min <= rule.max);
+    assert(rule.max <= rule.cells.length);
+    assert(rule.cells.length > 0);
+    assert(rule.min > 0 || rule.max < rule.cells.length);
+    
   }
 }
 
