@@ -71,16 +71,18 @@ td {
 const nRows = 10;
 const nCols = 10;
 const exampleBoards = 10;
-const nBoards = 5000;
+const nBoards = 100000;
 const nSolvable = 5;
 const maxSolvableTime = 2500;
 
-// compareSolvers(doSolve, doSolveWithPartial, 20);
+compareSolvers(doSolve, doSolve3, 20);
 // compareSolvers(doSolveWithPartial, doSolveWithUnbalanced, 20);
 
-testSolver(doSolve, 20);
+// testSolver(doSolve, 20);
 
 // generateSolvableBoards(doSolve, 31);
+
+// solveBoard(doSolve2, 1803, 20)
 
 function generateSolvableBoards(solver, nMines) {
   let startTime = performance.now()
@@ -129,7 +131,7 @@ function generateSolvableBoards(solver, nMines) {
   boardc.insertBefore(document.createTextNode(`generated ${boardCounter} boards in ${Math.floor(performance.now() - startTime)}ms`), boardc.firstChild)
 }
 
-// solveBoard(doSolveWithPartial, 593, 20)
+// solveBoard(doSolve, 593, 20) // Interesting flag-rule situation
 
 function solveBoard(solver, boardSeed, nMines, providedStartIx) {
   let board = generateBoard(nMines, boardSeed);
@@ -484,9 +486,9 @@ function doSolve(board, counts, startIx) {
             let newMax = Math.min(rule1.max - rule2.min, rule1.cells.length - overlapCount);
             if (newMin != 0 || newMax != rule1.cells.length - overlapCount) {
               addRule({
+                cells: rule1.cells.filter(n => !rule2.cells.includes(n)),
                 min: newMin,
                 max: newMax,
-                cells: rule1.cells.filter(n => !rule2.cells.includes(n)),
               })
             } else {
               assert(rule1.min != rule1.max || rule2.min != rule2.max);
@@ -503,12 +505,58 @@ function doSolve(board, counts, startIx) {
           let overlapMax = Math.min(rule.max, other.max, overlapCount);
           if (overlapMin != 0 || overlapMax != overlapCount) {
             addRule({
+              cells: rule.cells.filter(n => other.cells.includes(n)),
               min: overlapMin,
               max: overlapMax,
-              cells: rule.cells.filter(n => other.cells.includes(n)),
             });
           }
         }
+      }
+
+      function hasOneOfTwoRule(cell, delta) {
+        assert(cell < nRows * nCols);
+        if (solved[cell]) {
+          return false;
+        }
+        for (let rule of rulesByCell[cell]) {
+          if (rule.min === 1 && rule.max === 1 &&
+              rule.cells.length === 2 &&
+              rule.cells[0] === cell &&
+              rule.cells[1] === cell + delta) {
+            return true;
+          }
+        }
+        return false;
+      }
+
+      function checkForSquare(deltaAxis1, deltaAxis2) {
+        let cell = rule.cells[0];
+        if (cell + deltaAxis1 === rule.cells[1]) {
+          if (hasOneOfTwoRule(cell + deltaAxis2, deltaAxis1)) {
+            // We found a rule below. Check if we also have a right or left rule
+            // and if so add the other
+            if (hasOneOfTwoRule(cell, deltaAxis2)) {
+              addRule({
+                cells: [cell + deltaAxis1, cell + deltaAxis1 + deltaAxis2],
+                min: 1,
+                max: 1,
+              })
+            } else if (hasOneOfTwoRule(cell + deltaAxis1, deltaAxis2)) {
+              addRule({
+                cells: [cell, cell + deltaAxis2],
+                min: 1,
+                max: 1,
+              })
+            }
+          }
+        }
+      }
+
+      if (rule.min === 1 && rule.max === 1 && rule.cells.length === 2 &&
+          rule.cells[0] < (nRows * nCols - nCols * 2 - 3) &&
+          (rule.cells[0] % nCols) < nCols - 2) {
+        checkForSquare(1, nCols);
+        checkForSquare(nCols, 1);
       }
     } else {
       // We could bail early if there are rules that don't overlap with any other rules, since
