@@ -75,7 +75,7 @@ const nBoards = 100000;
 const nSolvable = 5;
 const maxSolvableTime = 2500;
 
-compareSolvers(doSolve, doSolve3, 20);
+compareSolvers(doSolve, doSolve2, 20);
 // compareSolvers(doSolveWithPartial, doSolveWithUnbalanced, 20);
 
 // testSolver(doSolve, 20);
@@ -514,15 +514,18 @@ function doSolve(board, counts, startIx) {
       }
 
       function hasOneOfTwoRule(cell, delta) {
-        assert(cell < nRows * nCols);
-        if (solved[cell]) {
+        if (cell < 0 ||
+            cell >= nRows * nCols ||
+            solved[cell]) {
           return false;
         }
         for (let rule of rulesByCell[cell]) {
           if (rule.min === 1 && rule.max === 1 &&
               rule.cells.length === 2 &&
-              rule.cells[0] === cell &&
-              rule.cells[1] === cell + delta) {
+              (delta > 0 ? (rule.cells[0] === cell &&
+                            rule.cells[1] === cell + delta) :
+                           (rule.cells[0] === cell + delta &&
+                            rule.cells[1] === cell))) {
             return true;
           }
         }
@@ -537,13 +540,13 @@ function doSolve(board, counts, startIx) {
             // and if so add the other
             if (hasOneOfTwoRule(cell, deltaAxis2)) {
               addRule({
-                cells: [cell + deltaAxis1, cell + deltaAxis1 + deltaAxis2],
+                cells: deltaAxis2 > 0 ? [cell + deltaAxis1, cell + deltaAxis1 + deltaAxis2] : [cell + deltaAxis1  + deltaAxis2, cell + deltaAxis1],
                 min: 1,
                 max: 1,
               })
             } else if (hasOneOfTwoRule(cell + deltaAxis1, deltaAxis2)) {
               addRule({
-                cells: [cell, cell + deltaAxis2],
+                cells: deltaAxis2 > 0 ? [cell, cell + deltaAxis2] : [cell + deltaAxis2, cell],
                 min: 1,
                 max: 1,
               })
@@ -552,11 +555,15 @@ function doSolve(board, counts, startIx) {
         }
       }
 
-      if (rule.min === 1 && rule.max === 1 && rule.cells.length === 2 &&
-          rule.cells[0] < (nRows * nCols - nCols * 2 - 3) &&
-          (rule.cells[0] % nCols) < nCols - 2) {
+      // rule.cells[0] < (nRows * nCols - nCols * 2 - 3) &&
+      // (rule.cells[0] % nCols) < nCols - 2
+
+      if (rule.min === rule.max && rule.cells.length === 2) {
+        assert(rule.min === 1);
         checkForSquare(1, nCols);
         checkForSquare(nCols, 1);
+        checkForSquare(1, -nCols);
+        checkForSquare(nCols, -1);
       }
     } else {
       // We could bail early if there are rules that don't overlap with any other rules, since
