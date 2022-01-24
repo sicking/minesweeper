@@ -76,7 +76,7 @@ const nSolvable = 5;
 const maxSolvableTime = 2500;
 
 compareSolvers(doSolve, doSolve2, 20);
-// compareSolvers(doSolveWithPartial, doSolveWithUnbalanced, 20);
+//compareSolvers(doSolve, doSolve3, 20);
 
 // testSolver(doSolve, 20);
 
@@ -513,44 +513,36 @@ function doSolve(board, counts, startIx) {
         }
       }
 
-      function hasOneOfTwoRule(cell, delta) {
+      function hasTwoRule(cell, delta) {
         if (cell < 0 ||
             cell >= nRows * nCols ||
             solved[cell]) {
-          return false;
+          return [];
         }
+
+        let rules = [];
         for (let rule of rulesByCell[cell]) {
-          if (rule.min === 1 && rule.max === 1 &&
-              rule.cells.length === 2 &&
+          if (rule.cells.length === 2 &&
               (delta > 0 ? (rule.cells[0] === cell &&
                             rule.cells[1] === cell + delta) :
                            (rule.cells[0] === cell + delta &&
                             rule.cells[1] === cell))) {
-            return true;
+            rules.push(rule);
           }
         }
-        return false;
+        return rules;
       }
 
       function checkForSquare(deltaAxis1, deltaAxis2) {
         let cell = rule.cells[0];
         if (cell + deltaAxis1 === rule.cells[1]) {
-          if (hasOneOfTwoRule(cell + deltaAxis2, deltaAxis1)) {
-            // We found a rule below. Check if we also have a right or left rule
-            // and if so add the other
-            if (hasOneOfTwoRule(cell, deltaAxis2)) {
-              addRule({
-                cells: deltaAxis2 > 0 ? [cell + deltaAxis1, cell + deltaAxis1 + deltaAxis2] : [cell + deltaAxis1  + deltaAxis2, cell + deltaAxis1],
-                min: 1,
-                max: 1,
-              })
-            } else if (hasOneOfTwoRule(cell + deltaAxis1, deltaAxis2)) {
-              addRule({
-                cells: deltaAxis2 > 0 ? [cell, cell + deltaAxis2] : [cell + deltaAxis2, cell],
-                min: 1,
-                max: 1,
-              })
-            }
+          for (let otherRule of hasTwoRule(cell + deltaAxis2, deltaAxis1)) {
+            addRule({
+              cells: deltaAxis2 > 0 ? rule.cells.concat([cell + deltaAxis2, cell + deltaAxis1 + deltaAxis2]) :
+                                      [cell + deltaAxis2, cell + deltaAxis1 + deltaAxis2].concat(rule.cells),
+              min: rule.min + otherRule.min,
+              max: rule.max + otherRule.max,
+            })
           }
         }
       }
@@ -558,8 +550,7 @@ function doSolve(board, counts, startIx) {
       // rule.cells[0] < (nRows * nCols - nCols * 2 - 3) &&
       // (rule.cells[0] % nCols) < nCols - 2
 
-      if (rule.min === rule.max && rule.cells.length === 2) {
-        assert(rule.min === 1);
+      if (rule.cells.length === 2) {
         checkForSquare(1, nCols);
         checkForSquare(nCols, 1);
         checkForSquare(1, -nCols);
