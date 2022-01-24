@@ -71,7 +71,7 @@ td {
 const nRows = 10;
 const nCols = 10;
 const exampleBoards = 10;
-const nBoards = 100000;
+const nBoards = 10000;
 const nSolvable = 5;
 const maxSolvableTime = 2500;
 
@@ -410,7 +410,7 @@ function doSolve(board, counts, startIx) {
   let queueEmpty = [];
   let rulesPass1 = new Set();
   let rulesPass2 = new Set();
-  let rulesByCell = solved.map(() => new Set());
+  let rulesByCell = solved.map(() => []);
 
   if (counts[startIx] !== 'x') {
     click(startIx);
@@ -520,17 +520,13 @@ function doSolve(board, counts, startIx) {
           return [];
         }
 
-        let rules = [];
-        for (let rule of rulesByCell[cell]) {
-          if (rule.cells.length === 2 &&
-              (delta > 0 ? (rule.cells[0] === cell &&
-                            rule.cells[1] === cell + delta) :
-                           (rule.cells[0] === cell + delta &&
-                            rule.cells[1] === cell))) {
-            rules.push(rule);
-          }
-        }
-        return rules;
+        return rulesByCell[cell].filter(rule => {
+          return rule.cells.length === 2 &&
+                 (delta > 0 ? (rule.cells[0] === cell &&
+                               rule.cells[1] === cell + delta) :
+                              (rule.cells[0] === cell + delta &&
+                               rule.cells[1] === cell))
+        })
       }
 
       function checkForSquare(deltaAxis1, deltaAxis2) {
@@ -757,7 +753,7 @@ function doSolve(board, counts, startIx) {
 
     rulesPass1.add(rule);
     for (let cell of rule.cells) {
-      rulesByCell[cell].add(rule);
+      rulesByCell[cell].push(rule);
     }
   }
 
