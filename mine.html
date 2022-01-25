@@ -76,7 +76,7 @@ const nSolvable = 5;
 const maxSolvableTime = 2500;
 
 compareSolvers(doSolve, doSolve2, 20);
-//compareSolvers(doSolve, doSolve3, 20);
+//compareSolvers(doSolve2, doSolve, 20);
 
 // testSolver(doSolve, 20);
 
@@ -408,6 +408,7 @@ function doSolve(board, counts, startIx) {
   let flagsRemaining = board.mines.size;
 
   let queueEmpty = [];
+  let queueNonEmpty = [];
   let rulesPass1 = new Set();
   let rulesPass2 = new Set();
   let rulesByCell = solved.map(() => []);
@@ -439,6 +440,33 @@ function doSolve(board, counts, startIx) {
           continue;
         }
         click(n);
+      }
+    } else if (queueNonEmpty.length) {
+      let ix = queueNonEmpty.pop();
+      let cells = [];
+      let remaining = counts[ix];
+      for (let n of getNeighbors(ix)) {
+        if (solved[n] === 'm') {
+          remaining--;
+        } else if (!solved[n]) {
+          cells.push(n);
+        }
+      }
+
+      if (remaining === 0) {
+        for (let cell of cells) {
+          click(cell);
+        }
+      } else if (remaining === cells.length) {
+        for (let cell of cells) {
+          flag(cell);
+        }
+      } else {
+        addRule({
+          cells,
+          min: remaining,
+          max: remaining,
+        }, rulesPass2);
       }
     } else if (rulesPass1.size) {
       let rule = popSet(rulesPass1);
@@ -689,25 +717,8 @@ function doSolve(board, counts, startIx) {
 
     if (counts[ix] === 0) {
       queueEmpty.push(ix);
-      return;
-    }
-
-    let cells = [];
-    let remaining = counts[ix];
-    for (let n of getNeighbors(ix)) {
-      if (solved[n] === 'm') {
-        remaining--;
-      } else if (!solved[n]) {
-        cells.push(n);
-      }
-    }
-
-    if (cells.length) {
-      addRule({
-        cells,
-        min: remaining,
-        max: remaining,
-      });
+    } else {
+      queueNonEmpty.push(ix);
     }
   }
 
@@ -728,7 +739,7 @@ function doSolve(board, counts, startIx) {
     }
   }
 
-  function addRule(rule) {
+  function addRule(rule, destination) {
     for (let other of rulesByCell[rule.cells[0]]) {
       if (other.cells.length === rule.cells.length &&
           other.cells.every((cell, i) => rule.cells[i] === cell)) {
@@ -751,7 +762,11 @@ function doSolve(board, counts, startIx) {
       }
     }
 
-    rulesPass1.add(rule);
+    if (destination) {
+      destination.add(rule);
+    } else {
+      rulesPass1.add(rule);
+    }
     for (let cell of rule.cells) {
       rulesByCell[cell].push(rule);
     }
