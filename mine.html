@@ -71,7 +71,7 @@ td {
 const nRows = 10;
 const nCols = 10;
 const exampleBoards = 10;
-const nBoards = 10000;
+const nBoards = 100000;
 const nSolvable = 5;
 const maxSolvableTime = 2500;
 
@@ -540,46 +540,6 @@ function doSolve(board, counts, startIx) {
           }
         }
       }
-
-      function hasTwoRule(cell, delta) {
-        if (cell < 0 ||
-            cell >= nRows * nCols ||
-            solved[cell]) {
-          return [];
-        }
-
-        return rulesByCell[cell].filter(rule => {
-          return rule.cells.length === 2 &&
-                 (delta > 0 ? (rule.cells[0] === cell &&
-                               rule.cells[1] === cell + delta) :
-                              (rule.cells[0] === cell + delta &&
-                               rule.cells[1] === cell))
-        })
-      }
-
-      function checkForSquare(deltaAxis1, deltaAxis2) {
-        let cell = rule.cells[0];
-        if (cell + deltaAxis1 === rule.cells[1]) {
-          for (let otherRule of hasTwoRule(cell + deltaAxis2, deltaAxis1)) {
-            addRule({
-              cells: deltaAxis2 > 0 ? rule.cells.concat([cell + deltaAxis2, cell + deltaAxis1 + deltaAxis2]) :
-                                      [cell + deltaAxis2, cell + deltaAxis1 + deltaAxis2].concat(rule.cells),
-              min: rule.min + otherRule.min,
-              max: rule.max + otherRule.max,
-            })
-          }
-        }
-      }
-
-      // rule.cells[0] < (nRows * nCols - nCols * 2 - 3) &&
-      // (rule.cells[0] % nCols) < nCols - 2
-
-      if (rule.cells.length === 2) {
-        checkForSquare(1, nCols);
-        checkForSquare(nCols, 1);
-        checkForSquare(1, -nCols);
-        checkForSquare(nCols, -1);
-      }
     } else {
       // We could bail early if there are rules that don't overlap with any other rules, since
       // we will never get more information about that rule. So while we could solve more cells
@@ -588,17 +548,21 @@ function doSolve(board, counts, startIx) {
       // The 'rule.min === rule.max' filter here speeds things up by a lot, but does make us fail
       // a few more situations. However those situations are quite hard for a human to detect.
       // And possibly there are better ways of catching those situations
-      let foundRules = new Set();
+      let foundFlagRules = new Set();
+      let foundSquareRules = new Set();
       for (let [ix, cellRules] of rulesByCell.entries()) {
         if (!solved[ix]) {
           for (let rule of cellRules) {
             if (!rule.ignoreForFlagRule && rule.min == rule.max) {
-              foundRules.add(rule);
+              foundFlagRules.add(rule);
+            }
+            if (rule.cells.length == 2 || rule.cells.length == 3) {
+              foundSquareRules.add(rule);
             }
           }
         }
       }
-      let rules = Array.from(foundRules);
+      let flagRules = Array.from(foundFlagRules);
       let covered = solved.map(() => 0);
       let cellsRemaining = flagsRemaining + clicksRemaining;
       let maxFlagsRemaining = flagsRemaining;
@@ -606,13 +570,13 @@ function doSolve(board, counts, startIx) {
 
       let appliedRules = []
 
-      if (!iterateMore(0)) {
+      if (!iterateFlagRule(0) && !findSquares()) {
         done = true;
       }
 
-      function iterateMore(startIx) {
-        ruleLoop: for (let ruleIx = startIx; ruleIx < rules.length; ruleIx++) {
-          let rule = rules[ruleIx];
+      function iterateFlagRule(startIx) {
+        ruleLoop: for (let ruleIx = startIx; ruleIx < flagRules.length; ruleIx++) {
+          let rule = flagRules[ruleIx];
 
           // Check if we can add this rule
           let overlap = 0
@@ -676,7 +640,7 @@ function doSolve(board, counts, startIx) {
           }
 
           // Otherwise keep searching
-          if (iterateMore(ruleIx + 1)) {
+          if (iterateFlagRule(ruleIx + 1)) {
             return true;
           }
 
@@ -696,6 +660,35 @@ function doSolve(board, counts, startIx) {
           });
         }
         return false;
+      }
+
+      function findSquares() {
+        assert(!rulesPass1.size);
+        for (let rule of foundSquareRules) {
+          checkSquare(rule, 1, nCols);
+          checkSquare(rule, nCols, 1);
+          if (rulesPass1.size) {
+            return true;
+          }
+        }
+        return false;
+      }
+
+      function checkSquare(rule, deltaAxis1, deltaAxis2) {
+        if (rule.cells.length === 2 &&
+            rule.cells[0] + deltaAxis1 === rule.cells[1]) {
+          for (let otherRule of rulesByCell[rule.cells[0] + deltaAxis2] || []) {
+            if (otherRule.cells.length === 2 &&
+                otherRule.cells[0] === rule.cells[0] + deltaAxis2 &&
+                otherRule.cells[1] === rule.cells[0] + deltaAxis2 + deltaAxis1) {
+              addRule({
+                cells: rule.cells.concat(otherRule.cells).sort(),
+                min: rule.min + otherRule.min,
+                max: rule.max + otherRule.max,
+              })
+            }
+          }
+        }
       }
     }
   }
