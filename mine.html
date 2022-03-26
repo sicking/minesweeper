@@ -548,21 +548,86 @@ function doSolve(board, counts, startIx) {
       // The 'rule.min === rule.max' filter here speeds things up by a lot, but does make us fail
       // a few more situations. However those situations are quite hard for a human to detect.
       // And possibly there are better ways of catching those situations
-      let foundFlagRules = new Set();
-      let foundSquareRules = new Set();
+      let flagRules = [];
+
+      const shapeDeltas = {
+        hPair: [1],
+        vPair: [nCols],
+        hTrip: [1, 2],
+        vTrip: [nCols, nCols*2],
+        rightBottomL: [nCols - 1, nCols],
+        leftBottomL: [nCols, nCols + 1],
+        leftTopL: [1, nCols],
+        rightTopL: [1, nCols + 1],
+      };
+      const pairings = [
+        ["hPair", "hPair", nCols],
+        ["vPair", "vPair", 1],
+        ["hTrip", "hTrip", nCols],
+        ["vTrip", "vTrip", 1],
+
+        ["hTrip", "hPair", nCols],
+        ["hTrip", "hPair", nCols + 1],
+        ["hTrip", "hPair", -nCols],
+        ["hTrip", "hPair", -nCols + 1],
+
+        ["vTrip", "vPair", 1],
+        ["vTrip", "vPair", 1 + nCols],
+        ["vTrip", "vPair", -1],
+        ["vTrip", "vPair", -1 + nCols],
+
+        ["rightBottomL", "vPair", 1],
+        ["rightBottomL", "hPair", nCols * 2 - 1],
+
+        ["leftBottomL", "vPair", -1],
+        ["leftBottomL", "hPair", nCols * 2],
+
+        ["leftTopL", "vPair", -1],
+        ["leftTopL", "hPair", -nCols],
+
+        ["rightTopL", "vPair", 2],
+        ["rightTopL", "hPair", -nCols],
+      ]
+
+      let shapeRules = {
+        hPair: new Map(),
+        vPair: new Map(),
+        hTrip: new Map(),
+        vTrip: new Map(),
+        rightBottomL: new Map(),
+        leftBottomL: new Map(),
+        leftTopL: new Map(),
+        rightTopL: new Map(),
+      };
+
       for (let [ix, cellRules] of rulesByCell.entries()) {
-        if (!solved[ix]) {
-          for (let rule of cellRules) {
-            if (!rule.ignoreForFlagRule && rule.min == rule.max) {
-              foundFlagRules.add(rule);
-            }
-            if (rule.cells.length == 2 || rule.cells.length == 3) {
-              foundSquareRules.add(rule);
+        if (solved[ix]) {
+          continue;
+        }
+        ruleLoop: for (let rule of cellRules) {
+          if (rule.cells[0] !== ix) {
+            continue;
+          }
+          if (!rule.ignoreForFlagRule && rule.min == rule.max) {
+            assert(flagRules.indexOf(rule) === -1);
+            flagRules.push(rule);
+          }
+          for (const [key, shape] of Object.entries(shapeDeltas)) {
+            if (rule.cells.length === shape.length + 1 &&
+                rule.cells[1] === rule.cells[0] + shape[0] &&
+                (shape.length === 1 ||
+                 rule.cells[2] === rule.cells[0] + shape[1])) {
+              let arr = shapeRules[key].get(ix);
+              if (arr) {
+                arr.push(rule);
+              } else {
+                shapeRules[key].set(ix, [rule]);
+              }
+              continue ruleLoop;
             }
           }
         }
       }
-      let flagRules = Array.from(foundFlagRules);
       let covered = solved.map(() => 0);
       let cellsRemaining = flagsRemaining + clicksRemaining;
       let maxFlagsRemaining = flagsRemaining;
@@ -664,31 +729,28 @@ function doSolve(board, counts, startIx) {
 
       function findSquares() {
         assert(!rulesPass1.size);
-        for (let rule of foundSquareRules) {
-          checkSquare(rule, 1, nCols);
-          checkSquare(rule, nCols, 1);
-          if (rulesPass1.size) {
-            return true;
-          }
-        }
-        return false;
-      }
-
-      function checkSquare(rule, deltaAxis1, deltaAxis2) {
-        if (rule.cells.length === 2 &&
-            rule.cells[0] + deltaAxis1 === rule.cells[1]) {
-          for (let otherRule of rulesByCell[rule.cells[0] + deltaAxis2] || []) {
-            if (otherRule.cells.length === 2 &&
-                otherRule.cells[0] === rule.cells[0] + deltaAxis2 &&
-                otherRule.cells[1] === rule.cells[0] + deltaAxis2 + deltaAxis1) {
-              addRule({
-                cells: rule.cells.concat(otherRule.cells).sort(),
-                min: rule.min + otherRule.min,
-                max: rule.max + otherRule.max,
-              })
+        for (let [keyA, keyB, delta] of pairings) {
+          for (let [ix, rules] of shapeRules[keyA]) {
+            let otherRules = shapeRules[keyB].get(ix + delta);
+            if (!otherRules) {
+              continue;
+            }
+            for (let rule of rules) {
+              for (let otherRule of otherRules) {
+                combineRules(rule, otherRule);
+              }
             }
           }
         }
+        return !!rulesPass1.size;
+      }
+      function combineRules(rule1, rule2) {
+        assert(rule1.cells.every(cell => rule2.cells.indexOf(cell) === -1));
+        addRule({
+          cells: rule1.cells.concat(rule2.cells).sort(),
+          min: rule1.min + rule2.min,
+          max: rule1.max + rule2.max,
+        })
       }
     }
   }
