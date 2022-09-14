@@ -75,7 +75,7 @@ const nBoards = 100000;
 const nSolvable = 5;
 const maxSolvableTime = 2500;
 
-compareSolvers(doSolve, doSolve2, 20);
+//compareSolvers(doSolve, doSolve2, 20);
 //compareSolvers(doSolve2, doSolve, 20);
 
 // testSolver(doSolve, 20);
@@ -140,6 +140,84 @@ function solveBoard(solver, boardSeed, nMines, providedStartIx) {
   boardc.appendChild(document.createElement('hr'));
 }
 
+makePlayableBoard([16, 19, 83, 86, 88, 89], [1])
+makePlayableBoard([21, 24, 26, 27, 29], [43])
+makePlayableBoard([83, 54, 56, 59], [99])
+makePlayableBoard([31, 34, 36, 39, 15], [13, 9, 5, 25, 15])
+makePlayableBoard([3, 5, 12, 16, 32, 36, 43, 45], [24])
+makePlayableBoard([16, 36, 38], [9])
+makePlayableBoard([10, 21, 31, 41, 40], [21, 31, 41, 40, 9])
+
+function makePlayableBoard(mines, startIx) {
+  let board = {
+    mines: new Set(mines)
+  }
+  let counts = calculateCounts(board);
+  let table = document.createElement('table');
+  document.getElementById('boardc').appendChild(table);
+  document.getElementById('boardc').appendChild(document.createElement('hr'));
+  let cells = [];
+  for (let row = 0; row < nRows; row++) {
+    let r = document.createElement('tr')
+    table.appendChild(r)
+    for (let col = 0; col < nCols; col++) {
+      let c = document.createElement('td')
+      r.appendChild(c)
+      cells.push(c)
+
+      let ix = row * nCols + col;
+      c.onclick = (e) => {
+        if (!solved[ix]) {
+          click(ix);
+        } else {
+          solved[ix] = undefined
+        }
+
+        updateBoard();
+      }
+      c.oncontextmenu = (e) => {
+        console.log(e)
+        if (e.button != 2) return;
+
+        if (board.mines.has(ix)) {
+          board.mines.delete(ix);
+        } else {
+          board.mines.add(ix);
+        }
+        counts = calculateCounts(board);
+
+        updateBoard();
+        e.preventDefault();
+      }
+    }
+  }
+  let solved = cells.map(() => undefined);
+  function click(ix) {
+    solved[ix] = counts[ix] === 'x' ? 'm' : 'c'
+    if (counts[ix] === 0) {
+      for (let n of getNeighbors(ix)) {
+        if (!solved[n]) {
+          click(n);
+        }
+      }
+    }
+  }
+  startIx.map(click)
+
+  updateBoard();
+
+  function updateBoard() {
+    for (let [i, cell] of cells.entries()) {
+      if (counts[i] === 'x' && solved[i]) {
+        cell.className = 'solvedMine'
+      } else if (solved[i]) {
+        cell.className = 'solved' + counts[i]
+      } else {
+        cell.className = 'unsolved'
+      }
+    }
+  }
+}
 
 function testSolver(solver, nMines) {
   let solved = runSolver(solver, nMines);
